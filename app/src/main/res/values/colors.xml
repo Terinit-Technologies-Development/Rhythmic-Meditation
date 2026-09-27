@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Calm palette; keep in sync with ui/theme/Color.kt -->
+    <color name="meditation_green">#7D9B80</color>
+    <color name="mist_blue">#C6D6E6</color>
+    <color name="warm_cream">#F7F3EC</color>
+    <color name="slate_text">#2E3A46</color>
+    <color name="soft_divider">#E6E2DA</color>
+
+    <!-- Launcher icon -->
+    <color name="ic_launcher_background">#EAF0F2</color>
+</resources>

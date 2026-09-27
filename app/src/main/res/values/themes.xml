@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Window theme only. All in-app theming is handled by Compose (ui/theme). -->
+    <style name="Theme.RhythmicMeditation" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/warm_cream</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

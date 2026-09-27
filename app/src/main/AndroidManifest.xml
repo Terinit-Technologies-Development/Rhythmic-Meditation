@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        No INTERNET permission: Rhythmic Meditation is local-first and offline-capable.
+        No overlay / accessibility / device-admin permissions: Rhythmic Routine owns
+        all policy and device enforcement. Meditation owns meditation evidence only.
+    -->
+
+    <!--
+        Signature-level permission guarding the status ContentProvider so that only
+        same-signature companion apps (e.g. Rhythmic Routine) can read session status.
+    -->
+    <permission
+        android:name="com.terinit.rhythmicmeditation.permission.STATUS_ACCESS"
+        android:protectionLevel="signature" />
+
+    <application
+        android:name=".app.RhythmicMeditationApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.RhythmicMeditation">
+
+        <activity
+            android:name=".app.MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.RhythmicMeditation">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+            IPC surface for Rhythmic Routine. Pass 1 ships the provider shell only;
+            query/insert semantics are completed in a later pass. Exported and
+            guarded by the signature permission plus caller verification
+            (see integration/contract/CallerVerifier).
+        -->
+        <provider
+            android:name=".integration.provider.MeditationStatusProvider"
+            android:authorities="com.terinit.rhythmicmeditation.status"
+            android:exported="true"
+            android:grantUriPermissions="false"
+            android:permission="com.terinit.rhythmicmeditation.permission.STATUS_ACCESS" />
+    </application>
+
+</manifest>
