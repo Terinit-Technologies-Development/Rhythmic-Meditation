@@ -130,9 +130,7 @@ fun RhythmicMeditationRoot(
                 }
                 composable(AppRoute.Evening.route) {
                     EveningScreen(
-                        onStartNow = { navController.navigate(AppRoute.ActiveSession.route) },
-                        onSnooze = { navController.popBackStack() },
-                        onDefer = { navController.popBackStack() }
+                        onStartSession = { navController.navigate(AppRoute.ActiveSession.route) }
                     )
                 }
                 composable(AppRoute.Insights.route) {

@@ -88,7 +88,9 @@ quiet ongoing notification, documented type/permission). No wake locks.
 
 - Routine cooldown/restorative policy (Pass 3) — restorative/cooldown UI is
   still placeholder copy
-- Evening flow completion logic, insight generation
+- Routine-side implementations of the evening trigger and the attention/reading
+  insight projections (the narrow contract surfaces exist and degrade quietly to
+  "not connected"; the state model and insights work standalone)
 - Peer pairing configuration (trust policy returns "no peer configured" until
   then, so external IPC callers are rejected — by design)
 - Foreground service (see above), session history list, data management
@@ -103,7 +105,7 @@ quiet ongoing notification, documented type/permission). No wake locks.
 | Platform | Android (minSdk 26, targetSdk 36, compileSdk 37) |
 | Language | Kotlin (AGP 9 built-in Kotlin — see below) |
 | UI | Jetpack Compose + Material 3, Navigation Compose |
-| Persistence | Room 2.8.5 (KSP, schema v2), DataStore Preferences 1.1.7 |
+| Persistence | Room 2.8.5 (KSP, schema v3), DataStore Preferences 1.1.7 |
 | Concurrency | Coroutines + Flow |
 | Runtime signals | ProcessLifecycleOwner (`lifecycle-process`), PowerManager, Settings.Global.BOOT_COUNT |
 | Testing | JUnit 4, kotlinx-coroutines-test, AndroidX Test + Compose UI tests |
@@ -147,8 +149,9 @@ Windows: use `gradlew.bat` instead of `./gradlew`.
   behavior. `android.suppressUnsupportedCompileSdk` silences the AGP
   recommendation warning.
 - Versions are pinned in `gradle/libs.versions.toml`.
-- Room schema is **v2** (adds `session_time_checkpoints`); destructive fallback
-  is configured until real migrations are needed.
+- Room schema is **v3** (v2 added `session_time_checkpoints`, v3 adds
+  `evening_meditation`); destructive fallback is configured until real
+  migrations are needed.
 
 ---
 
@@ -165,7 +168,8 @@ com.terinit.rhythmicmeditation
 │   │                    | insights | settings   (+ ViewModel per area)
 │   └── components       CalmCard, buttons, InfoBanner, SoftProgressBar, brand
 ├── runtime              MeditationRuntimeController (the engine), runtime state
-│                        + events, ScreenStateReader, BootIdentityReader
+│                        + events, EveningMeditationController (evening
+│                        wind-down), ScreenStateReader, BootIdentityReader
 ├── domain
 │   ├── model            MeditationSession, MeditationInterval,
 │   │                    SessionInterruptionEvent, MeditationInsightSnapshot,
@@ -173,22 +177,31 @@ com.terinit.rhythmicmeditation
 │   ├── session          MeditationSessionStateMachine, MeditationSessionService
 │   │                    (accrual, exact-crossing completion, conservative
 │   │                    restore), MorningSessionPolicy
+│   ├── evening          EveningMeditation (evening wind-down state machine —
+│   │                    optional, deferable, non-punitive)
+│   ├── insights         MeditationInsights (truthful local aggregation,
+│   │                    date-key mapping, correlation threshold)
 │   ├── timing           TimeProvider, SystemTimeProvider, ElapsedTimeCalculator
 │   └── protocol         MeditationProtocol, recovery request/status DTOs,
 │                        request validator, malformed-payload field parser
 ├── data
-│   ├── local/db         MeditationDatabase (v2)
-│   ├── local/dao        5 DAOs (incl. SessionTimeCheckpointDao)
-│   ├── local/entity     5 Room entities (incl. SessionTimeCheckpointEntity)
+│   ├── local/db         MeditationDatabase (v3)
+│   ├── local/dao        6 DAOs (incl. SessionTimeCheckpointDao,
+│   │                    EveningMeditationDao)
+│   ├── local/entity     6 Room entities (incl. SessionTimeCheckpointEntity,
+│   │                    EveningMeditationEntity)
 │   ├── local/prefs      AppPreferences + AppPreferencesStore (DataStore)
-│   ├── repository       interfaces + Room implementations (incl. checkpoints)
+│   ├── repository       interfaces + Room implementations (incl. checkpoints,
+│   │                    evening records)
 │   ├── mapper           entity<->domain, domain<->contract mapping
 │   └── AppContainer     manual dependency container
 ├── integration
 │   ├── contract         MeditationStatusRepository, CallerVerifier,
 │   │                    RecoveryRequestHandler, CallerIdentity,
 │   │                    SystemCallerIdentityResolver, Local status repo,
-│   │                    Bundle codec
+│   │                    Bundle codec, RoutineEveningSignal (evening trigger),
+│   │                    AttentionInsightClient + ReadingInsightClient
+│   │                    (read-only, fail-open insight projections)
 │   ├── intent           MeditationIntents (recovery intent build/parse)
 │   └── provider         MeditationStatusProvider (verified, read-only)
 └── util                 TimeFormat, Ids, SessionCues (local bells/haptics)

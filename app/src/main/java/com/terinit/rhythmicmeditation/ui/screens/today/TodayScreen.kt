@@ -253,7 +253,7 @@ fun TodayScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // Entry point to the evening wind-down shell
+        // Entry point to the evening wind-down
         CalmCard(containerColor = MistBlueSurface) {
             Text(
                 text = "Evening Wind-Down",
@@ -262,7 +262,8 @@ fun TodayScreen(
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "Preview the evening practice shell (placeholder).",
+                text = "An optional 30-minute practice to close the day. " +
+                    "You can snooze it or defer it — nothing is lost.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = SlateTextMuted
             )

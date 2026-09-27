@@ -15,6 +15,24 @@
         android:name="com.terinit.rhythmicmeditation.permission.STATUS_ACCESS"
         android:protectionLevel="signature" />
 
+    <!--
+        Read-only cross-app evidence for Insights. Rhythmic Reader's Daily Evidence V2
+        provider is guarded by this signature permission; nothing broader is requested
+        and no book titles, contents, or annotations ever cross the boundary.
+    -->
+    <uses-permission android:name="com.terinit.rhythmicreader.permission.RECOVERY" />
+
+    <!--
+        Package visibility, scoped to exactly the read-only insight providers this app
+        queries (Rhythmic Routine's attention-insight projection and Rhythmic Reader's
+        Daily Evidence). No broad <package> visibility.
+    -->
+    <queries>
+        <provider android:authorities="com.terinit.rhythmicroutine.attention-insight" />
+        <provider android:authorities="com.terinit.rhythmicroutine.qa.attention-insight" />
+        <provider android:authorities="com.terinit.rhythmicreader.evidence" />
+    </queries>
+
     <application
         android:name=".app.RhythmicMeditationApp"
         android:allowBackup="true"
