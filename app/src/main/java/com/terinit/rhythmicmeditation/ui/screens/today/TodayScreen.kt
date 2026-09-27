@@ -12,14 +12,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Book
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.PauseCircle
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Spa
 import androidx.compose.material.icons.outlined.TrackChanges
 import androidx.compose.material3.Icon
@@ -30,9 +32,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.terinit.rhythmicmeditation.domain.session.MorningStatus
 import com.terinit.rhythmicmeditation.ui.components.AppBrand
 import com.terinit.rhythmicmeditation.ui.components.CalmCard
 import com.terinit.rhythmicmeditation.ui.components.IconBadge
@@ -40,6 +44,7 @@ import com.terinit.rhythmicmeditation.ui.components.InfoBanner
 import com.terinit.rhythmicmeditation.ui.components.PrimaryPillButton
 import com.terinit.rhythmicmeditation.ui.components.SoftProgressBar
 import com.terinit.rhythmicmeditation.ui.theme.EssentialAccessAmber
+import com.terinit.rhythmicmeditation.ui.theme.MeditationGreen
 import com.terinit.rhythmicmeditation.ui.theme.MeditationGreenSoft
 import com.terinit.rhythmicmeditation.ui.theme.MistBlueSurface
 import com.terinit.rhythmicmeditation.ui.theme.SlateTextMuted
@@ -48,12 +53,14 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Today / Home screen shell.
+ * Today / Home screen.
  *
- * PLACEHOLDER CONTENT (Pass 1): morning requirement, restorative balance, and
- * essential access copy are illustrative. Real requirement data arrives from
- * Rhythmic Routine in a later pass. The structure is the one future passes
- * build on.
+ * The morning meditation card is REAL local state (Pass 2): REQUIRED until
+ * today's morning session runs, in-progress / paused while it does, COMPLETE
+ * afterwards. There is deliberately no Skip action.
+ *
+ * Restorative balance and cooldown numbers remain placeholders until Rhythmic
+ * Routine supplies policy in Pass 3.
  */
 @Composable
 fun TodayScreen(
@@ -113,31 +120,13 @@ fun TodayScreen(
         )
         Spacer(Modifier.height(24.dp))
 
-        // Morning meditation card
-        CalmCard(containerColor = MaterialTheme.colorScheme.surface) {
-            IconBadge(icon = Icons.Outlined.Spa, contentDescription = null)
-            Spacer(Modifier.height(16.dp))
-            Text(
-                text = if (state.activeSession != null) {
-                    "Session in progress"
-                } else {
-                    "Morning Meditation Required"
-                },
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "Your morning buffer has ended.\nBegin today in stillness to unlock your day.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = SlateTextMuted
-            )
-            Spacer(Modifier.height(20.dp))
-            PrimaryPillButton(
-                text = if (state.activeSession != null) "Resume Session" else "Begin Session",
-                onClick = onStartSession
-            )
-        }
+        // Morning meditation — real state, no Skip
+        MorningCard(
+            status = state.morningStatus,
+            onBegin = { viewModel.onBeginMorningSession(onReady = onStartSession) },
+            onContinue = onStartSession,
+            onOpenInsights = onOpenInsights
+        )
 
         Spacer(Modifier.height(16.dp))
 
@@ -193,8 +182,8 @@ fun TodayScreen(
                         icon = Icons.Outlined.BarChart,
                         contentDescription = null,
                         containerColor = Color.White.copy(alpha = 0.6f),
-                        diameter = 44.dp,
-                        contentColor = MaterialTheme.colorScheme.secondary
+                        contentColor = MaterialTheme.colorScheme.secondary,
+                        diameter = 44.dp
                     )
                     Spacer(Modifier.width(8.dp))
                     Icon(
@@ -285,9 +274,75 @@ fun TodayScreen(
     }
 }
 
+/**
+ * The morning meditation card. No Skip action exists anywhere in this flow.
+ */
+@Composable
+private fun MorningCard(
+    status: MorningStatus,
+    onBegin: () -> Unit,
+    onContinue: () -> Unit,
+    onOpenInsights: () -> Unit
+) {
+    val icon: ImageVector = when (status) {
+        MorningStatus.REQUIRED -> Icons.Outlined.Spa
+        MorningStatus.IN_PROGRESS -> Icons.Outlined.PlayArrow
+        MorningStatus.PAUSED -> Icons.Outlined.PauseCircle
+        MorningStatus.COMPLETE -> Icons.Outlined.CheckCircle
+    }
+    CalmCard(containerColor = MaterialTheme.colorScheme.surface) {
+        IconBadge(
+            icon = icon,
+            contentDescription = null,
+            containerColor = MeditationGreenSoft.copy(alpha = 0.7f)
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = when (status) {
+                MorningStatus.REQUIRED -> "Morning Meditation Required"
+                MorningStatus.IN_PROGRESS -> "Morning Meditation in progress"
+                MorningStatus.PAUSED -> "Morning Meditation paused"
+                MorningStatus.COMPLETE -> "Morning Meditation Complete"
+            },
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = when (status) {
+                MorningStatus.REQUIRED ->
+                    "Your morning buffer has ended.\nBegin today in stillness to unlock your day."
+                MorningStatus.IN_PROGRESS ->
+                    "Your session is still running.\nCome back to it whenever you are ready."
+                MorningStatus.PAUSED ->
+                    "Your confirmed progress is safe.\nResume when you are ready to continue."
+                MorningStatus.COMPLETE ->
+                    "You've finished today's meditation.\nYour presence creates positive momentum."
+            },
+            style = MaterialTheme.typography.bodyLarge,
+            color = SlateTextMuted
+        )
+        Spacer(Modifier.height(20.dp))
+        when (status) {
+            MorningStatus.REQUIRED -> PrimaryPillButton(
+                text = "Begin Session",
+                onClick = onBegin
+            )
+            MorningStatus.IN_PROGRESS, MorningStatus.PAUSED -> PrimaryPillButton(
+                text = if (status == MorningStatus.PAUSED) "Resume Session" else "Continue Session",
+                onClick = onContinue
+            )
+            MorningStatus.COMPLETE -> PrimaryPillButton(
+                text = "View insights",
+                onClick = onOpenInsights
+            )
+        }
+    }
+}
+
 @Composable
 private fun RestorativeRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     value: String,
     progress: Float

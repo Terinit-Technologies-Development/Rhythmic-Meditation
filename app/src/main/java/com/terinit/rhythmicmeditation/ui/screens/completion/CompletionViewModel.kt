@@ -6,22 +6,30 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.terinit.rhythmicmeditation.app.RhythmicMeditationApp
+import com.terinit.rhythmicmeditation.data.local.prefs.AppPreferencesStore
 import com.terinit.rhythmicmeditation.data.repository.MeditationSessionRepository
 import com.terinit.rhythmicmeditation.domain.model.MeditationSession
+import com.terinit.rhythmicmeditation.domain.model.MeditationSessionKind
+import com.terinit.rhythmicmeditation.domain.model.MeditationSessionStatus
+import com.terinit.rhythmicmeditation.util.SessionCues
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * UI state for the Completion screen.
  *
- * Cooldown minutes are a placeholder in Pass 1: Rhythmic Routine owns the
- * cooldown and will supply the remaining time later.
+ * The completed session and its qualified minutes are REAL. Cooldown time
+ * remains a placeholder: Rhythmic Routine owns cooldowns and supplies the
+ * remaining time in Pass 3. Meditation never shortens a cooldown.
  */
 data class CompletionUiState(
     val completedSession: MeditationSession? = null,
-    val requirementComplete: Boolean = true,
+    val qualifiedMinutes: Int = 0,
+    val isCooldownRestorative: Boolean = false,
     val cooldownMinutesLeft: Int = 38,
     val cooldownTotalMinutes: Int = 90
 )
@@ -30,6 +38,7 @@ data class CompletionUiState(
  * State holder for the Completion screen.
  */
 class CompletionViewModel(
+    private val preferencesStore: AppPreferencesStore,
     sessionRepository: MeditationSessionRepository
 ) : ViewModel() {
 
@@ -37,9 +46,14 @@ class CompletionViewModel(
         sessionRepository.observeSessions()
             .map { sessions ->
                 val completed = sessions.firstOrNull {
-                    it.completedAtEpochMs != null
+                    it.status == MeditationSessionStatus.COMPLETED
                 }
-                CompletionUiState(completedSession = completed)
+                CompletionUiState(
+                    completedSession = completed,
+                    qualifiedMinutes = (completed?.completedQualifiedSeconds ?: 0) / 60,
+                    isCooldownRestorative =
+                        completed?.kind == MeditationSessionKind.COOLDOWN_RESTORATIVE
+                )
             }
             .stateIn(
                 scope = viewModelScope,
@@ -47,12 +61,25 @@ class CompletionViewModel(
                 initialValue = CompletionUiState()
             )
 
+    /** Optional completion bell — one soft tone, never part of qualification. */
+    fun playCompletionCueIfEnabled() {
+        viewModelScope.launch {
+            val preferences = preferencesStore.preferences.first()
+            if (preferences.sessionSoundEnabled) {
+                SessionCues.playBell(frequencyHz = 660.0, durationMs = 900)
+            }
+        }
+    }
+
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                     as RhythmicMeditationApp
-                CompletionViewModel(sessionRepository = app.container.sessionRepository)
+                CompletionViewModel(
+                    preferencesStore = app.container.preferencesStore,
+                    sessionRepository = app.container.sessionRepository
+                )
             }
         }
     }

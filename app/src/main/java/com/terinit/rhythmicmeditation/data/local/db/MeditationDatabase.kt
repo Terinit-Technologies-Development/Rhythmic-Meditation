@@ -8,10 +8,12 @@ import com.terinit.rhythmicmeditation.data.local.dao.MeditationInsightSnapshotDa
 import com.terinit.rhythmicmeditation.data.local.dao.MeditationIntervalDao
 import com.terinit.rhythmicmeditation.data.local.dao.MeditationSessionDao
 import com.terinit.rhythmicmeditation.data.local.dao.SessionInterruptionEventDao
+import com.terinit.rhythmicmeditation.data.local.dao.SessionTimeCheckpointDao
 import com.terinit.rhythmicmeditation.data.local.entity.MeditationInsightSnapshotEntity
 import com.terinit.rhythmicmeditation.data.local.entity.MeditationIntervalEntity
 import com.terinit.rhythmicmeditation.data.local.entity.MeditationSessionEntity
 import com.terinit.rhythmicmeditation.data.local.entity.SessionInterruptionEventEntity
+import com.terinit.rhythmicmeditation.data.local.entity.SessionTimeCheckpointEntity
 
 /**
  * Local session ledger. Fully offline: no cloud sync, no remote database.
@@ -21,9 +23,10 @@ import com.terinit.rhythmicmeditation.data.local.entity.SessionInterruptionEvent
         MeditationSessionEntity::class,
         MeditationIntervalEntity::class,
         SessionInterruptionEventEntity::class,
-        MeditationInsightSnapshotEntity::class
+        MeditationInsightSnapshotEntity::class,
+        SessionTimeCheckpointEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class MeditationDatabase : RoomDatabase() {
@@ -32,6 +35,7 @@ abstract class MeditationDatabase : RoomDatabase() {
     abstract fun meditationIntervalDao(): MeditationIntervalDao
     abstract fun sessionInterruptionEventDao(): SessionInterruptionEventDao
     abstract fun meditationInsightSnapshotDao(): MeditationInsightSnapshotDao
+    abstract fun sessionTimeCheckpointDao(): SessionTimeCheckpointDao
 
     companion object {
         const val DATABASE_NAME = "rhythmic_meditation.db"
@@ -46,9 +50,10 @@ abstract class MeditationDatabase : RoomDatabase() {
 
         private fun build(context: Context): MeditationDatabase =
             Room.databaseBuilder(context, MeditationDatabase::class.java, DATABASE_NAME)
-                // Schema is version 1 in Pass 1. Destructive fallback keeps local
-                // recovery simple until real migrations are needed; the session
-                // ledger is re-derivable from Routine recovery requests.
+                // Schema v2 (Pass 2) adds session_time_checkpoints. Destructive
+                // fallback keeps local recovery simple until real migrations are
+                // needed; the session ledger is re-derivable from Routine
+                // recovery requests.
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
     }

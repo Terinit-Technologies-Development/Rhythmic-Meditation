@@ -20,20 +20,35 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.terinit.rhythmicmeditation.domain.model.MeditationMode
+import com.terinit.rhythmicmeditation.domain.model.MeditationSessionStatus
+import com.terinit.rhythmicmeditation.runtime.RecoveryNotice
 import com.terinit.rhythmicmeditation.ui.components.InfoBanner
 import com.terinit.rhythmicmeditation.ui.components.PrimaryPillButton
 import com.terinit.rhythmicmeditation.ui.components.SecondaryPillButton
@@ -47,19 +62,59 @@ import com.terinit.rhythmicmeditation.ui.theme.SlateTextMuted
 import com.terinit.rhythmicmeditation.util.TimeFormat
 
 /**
- * Active Session screen shell.
+ * Active Session screen.
  *
- * PLACEHOLDER CONTENT (Pass 1): the breathing orb, phase indicator, and timer
- * use demo values when no session is running. Real qualified-time tracking and
- * pause/resume semantics are completed in Pass 2.
+ * The timer is a render-only projection of the monotonic ledger (see
+ * MeditationRuntimeController). Pause / Resume / End are the only writes.
+ *
+ * UX follows the mockup direction: breathing orb, "12:48 / 30:00" timer,
+ * calm quote, Pause / End Session, and the essential access reminder.
+ * Optional MeditationMode chips only reframe the practice — qualification is
+ * identical for every mode.
  */
 @Composable
 fun ActiveSessionScreen(
     onClose: () -> Unit,
-    onSessionEnded: () -> Unit,
+    onSessionCompleted: () -> Unit,
+    onSessionCancelled: () -> Unit,
     viewModel: ActiveSessionViewModel = viewModel(factory = ActiveSessionViewModel.Factory)
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val haptics = LocalHapticFeedback.current
+    var showEndConfirmation by remember { mutableStateOf(false) }
+
+    // Terminal states navigate exactly once each. Status-driven (not event
+    // driven) so a completion that happened while the screen was off — or
+    // before this screen was created — still routes correctly.
+    LaunchedEffect(state.status) {
+        when (state.status) {
+            MeditationSessionStatus.COMPLETED -> {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                onSessionCompleted()
+            }
+            MeditationSessionStatus.CANCELLED -> onSessionCancelled()
+            else -> Unit
+        }
+    }
+
+    if (showEndConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showEndConfirmation = false },
+            title = { Text("End this session?") },
+            text = {
+                Text("Your current meditation requirement will remain incomplete.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showEndConfirmation = false
+                    viewModel.onEndSessionConfirmed()
+                }) { Text("End session") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEndConfirmation = false }) { Text("Keep meditating") }
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -88,21 +143,39 @@ fun ActiveSessionScreen(
             }
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(20.dp))
 
-        // Breathing orb (placeholder visual)
+        // Recovery notice (process restore / reboot) — progress is safe, resume needed.
+        val notice = state.recoveryNotice
+        if (notice is RecoveryNotice.RestoredToPaused) {
+            InfoBanner(
+                title = "Session restored",
+                body = if (notice.rebootDetected) {
+                    "The device restarted. Your confirmed progress is safe — " +
+                        "unverified time was not counted. Tap Resume to continue."
+                } else {
+                    "The app was closed mid-session. Only your confirmed progress " +
+                        "was kept. Tap Resume to continue."
+                },
+                icon = Icons.Outlined.Restore,
+                containerColor = EssentialAccessAmber
+            )
+            Spacer(Modifier.height(16.dp))
+        }
+
+        // Breathing orb
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             BreathingOrb()
         }
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(28.dp))
 
         Text(
             text = state.sessionLabel,
             style = MaterialTheme.typography.labelMedium,
             color = MeditationGreen,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(10.dp))
         Row(
@@ -111,7 +184,7 @@ fun ActiveSessionScreen(
             verticalAlignment = Alignment.Bottom
         ) {
             Text(
-                text = TimeFormat.mmSs(state.elapsedSeconds),
+                text = TimeFormat.mmSs(state.elapsedSeconds.coerceAtMost(state.requiredSeconds)),
                 style = MaterialTheme.typography.displayLarge,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -123,18 +196,22 @@ fun ActiveSessionScreen(
         }
 
         Spacer(Modifier.height(14.dp))
-        BreathPhaseRow()
+        BreathPhaseRow(mode = state.mode, elapsedSeconds = state.elapsedSeconds)
         Spacer(Modifier.height(18.dp))
 
         Text(
             text = "Be here now.\nLet your breath guide you back to stillness.",
             style = MaterialTheme.typography.bodyLarge,
             color = SlateTextMuted,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(18.dp))
+
+        ModeSelector(selected = state.mode, onSelect = viewModel::onSelectMode)
+
+        Spacer(Modifier.height(18.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             SoftProgressBar(
@@ -153,21 +230,45 @@ fun ActiveSessionScreen(
         Spacer(Modifier.height(22.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            PrimaryPillButton(
-                text = "Pause",
-                onClick = viewModel::onPause,
-                modifier = Modifier.weight(1f),
-                leadingIcon = {
-                    IconCircleBadge(
-                        icon = Icons.Outlined.Pause,
-                        background = Color.White.copy(alpha = 0.25f),
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    )
-                }
-            )
+            if (state.isPaused) {
+                PrimaryPillButton(
+                    text = "Resume",
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.onPauseResume()
+                    },
+                    modifier = Modifier.weight(1f),
+                    leadingIcon = {
+                        IconCircleBadge(
+                            icon = Icons.Outlined.PlayArrow,
+                            background = Color.White.copy(alpha = 0.25f),
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                )
+            } else {
+                PrimaryPillButton(
+                    text = "Pause",
+                    onClick = viewModel::onPauseResume,
+                    modifier = Modifier.weight(1f),
+                    leadingIcon = {
+                        IconCircleBadge(
+                            icon = Icons.Outlined.Pause,
+                            background = Color.White.copy(alpha = 0.25f),
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                )
+            }
             SecondaryPillButton(
                 text = "End Session",
-                onClick = { viewModel.onEndSession(onSessionEnded) },
+                onClick = {
+                    if (state.requirementMet) {
+                        viewModel.onEndSessionConfirmed()
+                    } else {
+                        showEndConfirmation = true
+                    }
+                },
                 modifier = Modifier.weight(1f),
                 leadingIcon = {
                     IconCircleBadge(
@@ -194,6 +295,35 @@ fun ActiveSessionScreen(
 }
 
 @Composable
+private fun ModeSelector(
+    selected: MeditationMode,
+    onSelect: (MeditationMode) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        MeditationMode.entries.forEach { mode ->
+            FilterChip(
+                selected = mode == selected,
+                onClick = { onSelect(mode) },
+                label = {
+                    Text(
+                        text = mode.name.lowercase().replaceFirstChar { it.uppercase() },
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MeditationGreenSoft,
+                    selectedLabelColor = MaterialTheme.colorScheme.onSurface
+                ),
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
 private fun IconCircleBadge(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     background: Color,
@@ -216,14 +346,14 @@ private fun IconCircleBadge(
 
 /**
  * Calm breathing orb — concentric soft rings with a sage/mist gradient core.
- * Placeholder animation-free visual for Pass 1.
+ * Purely decorative framing; it never drives qualification.
  */
 @Composable
 private fun BreathingOrb() {
-    Box(modifier = Modifier.size(280.dp), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.size(260.dp), contentAlignment = Alignment.Center) {
         Box(
             modifier = Modifier
-                .size(280.dp)
+                .size(260.dp)
                 .background(
                     Brush.radialGradient(
                         listOf(
@@ -236,7 +366,7 @@ private fun BreathingOrb() {
         )
         Box(
             modifier = Modifier
-                .size(210.dp)
+                .size(195.dp)
                 .background(
                     Brush.radialGradient(
                         listOf(
@@ -249,7 +379,7 @@ private fun BreathingOrb() {
         )
         Box(
             modifier = Modifier
-                .size(150.dp)
+                .size(140.dp)
                 .background(
                     Brush.linearGradient(
                         listOf(MistBlue.copy(alpha = 0.55f), MeditationGreen.copy(alpha = 0.35f))
@@ -260,27 +390,48 @@ private fun BreathingOrb() {
     }
 }
 
-/** "INHALE · HOLD · EXHALE" phase indicator (placeholder state). */
+/**
+ * Phase indicator. In BREATH mode it cycles INHALE · HOLD · EXHALE with the
+ * elapsed timer (no extra clocks); other modes show a calm framing line.
+ */
 @Composable
-private fun BreathPhaseRow() {
+private fun BreathPhaseRow(mode: MeditationMode, elapsedSeconds: Int) {
+    if (mode != MeditationMode.BREATH) {
+        Text(
+            text = when (mode) {
+                MeditationMode.STILLNESS -> "STILLNESS"
+                MeditationMode.BODY -> "SOFTEN · NOTICE · RELEASE"
+                MeditationMode.IMAGINATION -> "IMAGINE · REST · RETURN"
+                else -> ""
+            },
+            style = MaterialTheme.typography.labelMedium,
+            color = SlateTextMuted,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+        return
+    }
+
+    val phase = (elapsedSeconds % 12) / 4 // 4s inhale, 4s hold, 4s exhale
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        PhaseDot(active = false)
-        Spacer(Modifier.width(8.dp))
-        Text("INHALE", style = MaterialTheme.typography.labelMedium, color = SlateTextMuted)
-        Spacer(Modifier.width(8.dp))
-        PhaseDot(active = true)
-        Spacer(Modifier.width(8.dp))
-        Text("HOLD", style = MaterialTheme.typography.labelMedium, color = SlateTextMuted)
-        Spacer(Modifier.width(8.dp))
-        PhaseDot(active = false)
-        Spacer(Modifier.width(8.dp))
-        Text("EXHALE", style = MaterialTheme.typography.labelMedium, color = SlateTextMuted)
-        Spacer(Modifier.width(8.dp))
-        PhaseDot(active = false)
+        listOf(
+            Triple("INHALE", 0, phase),
+            Triple("HOLD", 1, phase),
+            Triple("EXHALE", 2, phase)
+        ).forEach { (label, index, current) ->
+            PhaseDot(active = index == current)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (index == current) MeditationGreen else SlateTextMuted
+            )
+            Spacer(Modifier.width(8.dp))
+        }
     }
 }
 

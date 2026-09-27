@@ -4,15 +4,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.terinit.rhythmicmeditation.ui.components.CalmScreenBackground
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import com.terinit.rhythmicmeditation.ui.screens.completion.CompletionScreen
 import com.terinit.rhythmicmeditation.ui.screens.evening.EveningScreen
 import com.terinit.rhythmicmeditation.ui.screens.insights.InsightsScreen
@@ -29,12 +33,27 @@ import com.terinit.rhythmicmeditation.ui.screens.today.TodayScreen
  * on the top-level tabs. Screens navigate through lambda callbacks only —
  * no screen knows about NavController directly, which keeps them previewable
  * and testable.
+ *
+ * [pendingRoute] lets the Activity route a verified Routine recovery request
+ * into the session UI without coupling the protocol layer to Compose.
  */
 @Composable
-fun RhythmicMeditationRoot() {
+fun RhythmicMeditationRoot(
+    pendingRoute: StateFlow<String?> = MutableStateFlow(null),
+    onRouteConsumed: () -> Unit = {}
+) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
+
+    val routeToOpen by pendingRoute.collectAsStateWithLifecycle()
+    LaunchedEffect(routeToOpen) {
+        val route = routeToOpen ?: return@LaunchedEffect
+        onRouteConsumed()
+        navController.navigate(route) {
+            popUpTo(AppRoute.Today.route)
+        }
+    }
 
     CalmScreenBackground {
         Scaffold(
@@ -83,9 +102,14 @@ fun RhythmicMeditationRoot() {
                 composable(AppRoute.ActiveSession.route) {
                     ActiveSessionScreen(
                         onClose = { navController.popBackStack() },
-                        onSessionEnded = {
+                        onSessionCompleted = {
                             navController.navigate(AppRoute.Completion.route) {
                                 popUpTo(AppRoute.Today.route)
+                            }
+                        },
+                        onSessionCancelled = {
+                            navController.navigate(AppRoute.Today.route) {
+                                popUpTo(AppRoute.Today.route) { inclusive = true }
                             }
                         }
                     )

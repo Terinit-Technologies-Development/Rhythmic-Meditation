@@ -1,6 +1,6 @@
 package com.terinit.rhythmicmeditation.data.local.prefs
 
-import com.terinit.rhythmicmeditation.domain.model.MeditationSessionKind
+import com.terinit.rhythmicmeditation.domain.model.MeditationMode
 import com.terinit.rhythmicmeditation.domain.protocol.MeditationProtocol
 
 /**
@@ -12,7 +12,7 @@ import com.terinit.rhythmicmeditation.domain.protocol.MeditationProtocol
 data class AppPreferences(
     val sessionSoundEnabled: Boolean = true,
     val subtleHapticsEnabled: Boolean = true,
-    val lastSelectedMeditationMode: MeditationSessionKind = MeditationSessionKind.MORNING_REQUIRED,
+    val lastSelectedMeditationMode: MeditationMode = MeditationMode.STILLNESS,
     val onboardingComplete: Boolean = false,
     val lastOpenedTab: String = LastTab.TODAY,
     val pairedIntegrationEnabled: Boolean = false,

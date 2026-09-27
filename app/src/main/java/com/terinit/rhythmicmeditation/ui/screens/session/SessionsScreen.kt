@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.terinit.rhythmicmeditation.domain.model.MeditationSessionStatus
 import com.terinit.rhythmicmeditation.ui.components.CalmCard
 import com.terinit.rhythmicmeditation.ui.components.IconBadge
 import com.terinit.rhythmicmeditation.ui.components.PrimaryPillButton
@@ -36,6 +37,9 @@ fun SessionsScreen(
     viewModel: ActiveSessionViewModel = viewModel(factory = ActiveSessionViewModel.Factory)
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val hasLiveSession = state.status == MeditationSessionStatus.PENDING ||
+        state.status == MeditationSessionStatus.ACTIVE ||
+        state.status == MeditationSessionStatus.PAUSED
 
     Column(
         modifier = Modifier
@@ -62,13 +66,13 @@ fun SessionsScreen(
             IconBadge(icon = Icons.Outlined.PlayCircleOutline, contentDescription = null)
             Spacer(Modifier.height(14.dp))
             Text(
-                text = if (state.session != null) "Current session" else "No session in progress",
+                text = if (hasLiveSession) "Current session" else "No session in progress",
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = if (state.session != null) {
+                text = if (hasLiveSession) {
                     "${state.sessionLabel.lowercase().replaceFirstChar { it.uppercase() }} · " +
                         "${state.progressPercent}% complete"
                 } else {
@@ -79,7 +83,7 @@ fun SessionsScreen(
             )
             Spacer(Modifier.height(18.dp))
             PrimaryPillButton(
-                text = if (state.session != null) "Open session" else "Start a session",
+                text = if (hasLiveSession) "Open session" else "Start a session",
                 onClick = onOpenActiveSession
             )
         }

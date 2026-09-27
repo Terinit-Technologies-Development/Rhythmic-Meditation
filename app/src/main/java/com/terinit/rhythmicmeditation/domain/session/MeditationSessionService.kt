@@ -117,13 +117,14 @@ class MeditationSessionService(
     suspend fun createLocalSession(
         kind: MeditationSessionKind,
         requiredSeconds: Int,
-        sourceRhythmicDayId: String? = null
+        sourceRhythmicDayId: String? = null,
+        sessionId: String = Ids.newSessionId()
     ): Result<MeditationSession> {
         if (requiredSeconds <= 0) {
             return Result.failure(IllegalArgumentException("requiredSeconds must be > 0"))
         }
         val session = MeditationSession(
-            sessionId = Ids.newSessionId(),
+            sessionId = sessionId,
             protocolVersion = com.terinit.rhythmicmeditation.domain.protocol.MeditationProtocol.PROTOCOL_VERSION,
             kind = kind,
             status = MeditationSessionStatus.PENDING,
@@ -276,6 +277,105 @@ class MeditationSessionService(
     /** All recorded intervals for a session (evidence / recovery view). */
     suspend fun intervalsFor(sessionId: String): List<MeditationInterval> =
         intervalRepository.getIntervalsForSession(sessionId)
+
+    /** Start (monotonic) of the currently open interval, if any. */
+    suspend fun openIntervalStart(sessionId: String): Long? =
+        intervalRepository.getOpenInterval(sessionId)?.startedElapsedRealtimeMs
+
+    /**
+     * Closes the open interval at [endedElapsedMs] and accumulates the
+     * qualified seconds it contributed.
+     *
+     * The close point is clamped to the interval start, so a checkpoint that
+     * predates the interval (or a rebooted monotonic clock) can never credit
+     * time. When [maxTotalQualifiedSeconds] is set, the session's accumulated
+     * total is capped at that value (no "extra credit" beyond the requirement).
+     *
+     * @return the seconds actually credited.
+     */
+    suspend fun accrueIntervalUntil(
+        sessionId: String,
+        endedElapsedMs: Long,
+        maxTotalQualifiedSeconds: Int? = null
+    ): Result<Int> {
+        val open = intervalRepository.getOpenInterval(sessionId)
+            ?: return Result.success(0)
+        val safeEnd = maxOf(endedElapsedMs, open.startedElapsedRealtimeMs)
+        intervalRepository.closeOpenInterval(
+            sessionId = sessionId,
+            endedElapsedMs = safeEnd,
+            endedWallClockMs = timeProvider.currentTimeMillis()
+        )
+        var qualified = ElapsedTimeCalculator.closedIntervalSeconds(
+            startedElapsedMs = open.startedElapsedRealtimeMs,
+            endedElapsedMs = safeEnd
+        )
+        if (maxTotalQualifiedSeconds != null) {
+            val session = load(sessionId) ?: return Result.success(0)
+            val allowance = (maxTotalQualifiedSeconds - session.completedQualifiedSeconds)
+                .coerceAtLeast(0)
+            qualified = qualified.coerceAtMost(allowance)
+        }
+        if (qualified > 0) {
+            sessionRepository.addQualifiedSeconds(sessionId, qualified)
+        }
+        return Result.success(qualified)
+    }
+
+    /**
+     * Completes the session at the exact moment cumulative qualified time
+     * crossed the requirement.
+     *
+     * The final interval is closed at the crossing timestamp (not "now"), the
+     * credited total is capped at the requirement, and completion is
+     * idempotent. This is the only path that should complete a requirement:
+     * it can never manufacture credit.
+     */
+    suspend fun completeAtQualificationTarget(sessionId: String): Result<MeditationSession> {
+        val session = load(sessionId) ?: return notFound(sessionId)
+        if (session.status == MeditationSessionStatus.COMPLETED) {
+            return Result.success(session)
+        }
+        val openStart = intervalRepository.getOpenInterval(sessionId)
+            ?.startedElapsedRealtimeMs
+        if (openStart != null) {
+            val neededSeconds =
+                (session.requiredSeconds - session.completedQualifiedSeconds).coerceAtLeast(0)
+            val crossingElapsedMs = openStart + neededSeconds * 1000L
+            accrueIntervalUntil(
+                sessionId = sessionId,
+                endedElapsedMs = crossingElapsedMs,
+                maxTotalQualifiedSeconds = session.requiredSeconds
+            )
+        }
+        return completeSession(sessionId)
+    }
+
+    /**
+     * Conservative recovery after an uncertain gap (process death or reboot).
+     *
+     * Closes the open interval at the last known-safe monotonic point — never
+     * at "now" — credits only that safe tail, marks the session PAUSED, and
+     * records the interruption so the user must Resume. Undercounts are
+     * acceptable; inventing time is not.
+     */
+    suspend fun conservativelyRestoreToPaused(
+        sessionId: String,
+        safeEndElapsedMs: Long,
+        reason: InterruptionType = InterruptionType.PROCESS_RESTORE,
+        note: String? = null
+    ): Result<MeditationSession> {
+        val session = load(sessionId) ?: return notFound(sessionId)
+        if (session.status != MeditationSessionStatus.ACTIVE) {
+            return Result.success(session)
+        }
+        accrueIntervalUntil(sessionId, safeEndElapsedMs)
+        val transitioned = transition(session, MeditationSessionStatus.PAUSED)
+            ?: return illegalTransition(session, MeditationSessionStatus.PAUSED)
+        sessionRepository.incrementPauseCount(sessionId)
+        recordInterruption(sessionId, reason, note)
+        return Result.success(reloadWithEvidence(transitioned))
+    }
 
     // ------------------------------------------------------------------
     // Internals

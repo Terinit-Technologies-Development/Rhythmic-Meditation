@@ -20,6 +20,9 @@ interface MeditationSessionRepository {
 
     suspend fun getSession(sessionId: String): MeditationSession?
 
+    /** Sessions whose id starts with [prefix] (oldest first). */
+    suspend fun getSessionsWithIdPrefix(prefix: String): List<MeditationSession>
+
     suspend fun upsertSession(session: MeditationSession)
 
     suspend fun updateStatus(sessionId: String, status: MeditationSessionStatus)

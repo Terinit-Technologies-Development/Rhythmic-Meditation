@@ -10,40 +10,50 @@ import com.terinit.rhythmicmeditation.data.local.prefs.AppPreferences
 import com.terinit.rhythmicmeditation.data.local.prefs.AppPreferencesStore
 import com.terinit.rhythmicmeditation.data.repository.MeditationSessionRepository
 import com.terinit.rhythmicmeditation.domain.model.MeditationSession
+import com.terinit.rhythmicmeditation.domain.session.MorningSessionPolicy
+import com.terinit.rhythmicmeditation.domain.session.MorningStatus
+import com.terinit.rhythmicmeditation.runtime.MeditationRuntimeController
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * UI state for the Today screen.
  *
- * The morning/restorative numbers are local placeholders in Pass 1; real
- * requirement data comes from Rhythmic Routine via the protocol in a later pass.
+ * The morning requirement is REAL local state (Pass 2 dogfood): REQUIRED until
+ * today's morning meditation runs, COMPLETE once it has. Cooldown/restorative
+ * numbers remain placeholders until Routine supplies policy in Pass 3.
  */
 data class TodayUiState(
-    val activeSession: MeditationSession? = null,
+    val morningStatus: MorningStatus = MorningStatus.REQUIRED,
+    val currentSession: MeditationSession? = null,
     val preferences: AppPreferences = AppPreferences(),
-    val morningRequired: Boolean = true,
     val restorativeReadingMinutes: Int = 20,
     val restorativeMeditationCompleted: Int = 0,
     val restorativeMeditationTarget: Int = 1
 )
 
 /**
- * State holder for the Today screen.
+ * State holder for the Today screen. Begins today's morning meditation
+ * through the runtime (idempotent — never two morning sessions per id).
  */
 class TodayViewModel(
+    private val runtimeController: MeditationRuntimeController,
     sessionRepository: MeditationSessionRepository,
     preferencesStore: AppPreferencesStore
 ) : ViewModel() {
 
     val uiState: StateFlow<TodayUiState> = combine(
-        sessionRepository.observeActiveSession(),
+        sessionRepository.observeSessions(),
+        runtimeController.state,
         preferencesStore.preferences
-    ) { session, preferences ->
+    ) { sessions, runtime, preferences ->
+        val dayId = runtimeController.currentRhythmicDayId()
         TodayUiState(
-            activeSession = session,
+            morningStatus = MorningSessionPolicy.resolve(sessions, dayId),
+            currentSession = runtime.session,
             preferences = preferences
         )
     }.stateIn(
@@ -52,12 +62,25 @@ class TodayViewModel(
         initialValue = TodayUiState()
     )
 
+    /**
+     * Begins (or re-opens) today's morning session. Idempotent: the same
+     * session id is reused; a cancelled attempt starts a fresh session with no
+     * inherited progress.
+     */
+    fun onBeginMorningSession(onReady: () -> Unit) {
+        viewModelScope.launch {
+            runtimeController.startMorningSession()
+            onReady()
+        }
+    }
+
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                     as RhythmicMeditationApp
                 TodayViewModel(
+                    runtimeController = app.container.runtimeController,
                     sessionRepository = app.container.sessionRepository,
                     preferencesStore = app.container.preferencesStore
                 )

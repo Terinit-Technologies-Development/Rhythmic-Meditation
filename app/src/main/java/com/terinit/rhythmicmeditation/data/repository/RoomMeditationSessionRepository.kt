@@ -27,6 +27,9 @@ class RoomMeditationSessionRepository(
     override suspend fun getSession(sessionId: String): MeditationSession? =
         dao.getById(sessionId)?.toDomain()
 
+    override suspend fun getSessionsWithIdPrefix(prefix: String): List<MeditationSession> =
+        dao.getByIdPrefix(prefix).map { it.toDomain() }
+
     override suspend fun upsertSession(session: MeditationSession) {
         dao.upsert(session.toEntity())
     }

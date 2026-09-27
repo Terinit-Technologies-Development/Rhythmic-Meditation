@@ -16,58 +16,83 @@ Core principles:
 
 ---
 
-## Current status: Pass 1 — Native Foundation + App Skeleton + Shared Recovery Contract
+## Current status: Pass 2 — Meditation Engine + Morning Ritual
 
-Pass 1 delivers the structural backbone only. It intentionally does **not**
-implement final qualifying-session logic, full ritual flows, or full Routine
-integration.
+Pass 1 delivered the foundation (see git history). Pass 2 turns the scaffolding
+into a trustworthy meditation engine: real monotonic qualification, screen-off
+support, conservative recovery, and a fully dogfoodable Morning Meditation.
 
-### Implemented in Pass 1
+### Implemented in Pass 2
 
-- Native Android project (Kotlin + Jetpack Compose), single `app` module
-- Calm design system: `ui/theme` (tokens: MeditationGreen, MistBlue, WarmCream,
-  SlateText, SoftDivider), serif display + sans body typography, soft shapes
-- Navigation shell (`ui/navigation`): bottom nav (Today / Sessions / Insights /
-  Settings) + full-screen routes (Active Session, Completion, Evening,
-  Restorative Choice)
-- Screen shells with placeholder content (`ui/screens/*`) matching the mockups:
-  Today, Sessions, Active Session, Completion, Cooldown Restorative Choice,
-  Evening Wind-Down, Insights, Settings
-- Room persistence: 4 entities, 4 DAOs, database (`data/local`)
-- DataStore preferences (`data/local/prefs`) — small settings only; the session
-  ledger lives in Room
-- Domain models: `MeditationSession`, `MeditationInterval`,
-  `SessionInterruptionEvent`, `MeditationInsightSnapshot` (+ enums)
-- Session state machine (`MeditationSessionStateMachine`) and session lifecycle
-  service (`MeditationSessionService`) with create-or-replace / idempotent
-  recovery semantics and interval-based qualified-time accumulation
-- Monotonic timing abstraction (`domain/timing/TimeProvider` +
-  `SystemTimeProvider` + `ElapsedTimeCalculator`)
-- Protocol model + recovery contract DTOs (`domain/protocol`), validation for
-  malformed payloads (`MeditationRecoveryRequestValidator`,
-  `MeditationContractFields`)
-- Integration scaffolding (`integration/*`): Bundle codec, intent parser,
-  deny-by-default caller verification, `MeditationStatusRepository` interface +
-  local implementation, exported `ContentProvider` shell
-- Repositories: session, interval, interruption events, insights
-  (`data/repository`, Room-backed)
-- Per-screen ViewModels backed by repository flows (`ui/screens/*/…ViewModel`)
-- Unit tests for domain/state/validation/timing/session semantics; Room
-  roundtrip instrumentation tests
-- Manual DI container (`data/AppContainer`) — no DI framework
+- **`runtime.MeditationRuntimeController`** — the meditation engine. Owns
+  qualified-time accounting, interval lifecycle, checkpoints, conservative
+  recovery, and translation of Android lifecycle/device events into Pass 1
+  domain services. Exposes state via `StateFlow` and one-shot events.
+- **Derived timing** — the UI never mutates the ledger:
+  `qualifiedMs = closedQualifiedIntervals.sumOf { durationMs } + currentOpenIntervalDelta`.
+  The timer only renders this calculation; persistence happens on interval
+  close and on a 12s checkpoint cadence, never per frame or per second.
+- **Qualification rules** — time counts only while `status == ACTIVE` AND a
+  qualified interval is open AND the monotonic clock is valid AND the session
+  is neither expired nor completed. Standard requirement: 30 minutes =
+  **1,800 qualified seconds**. No points, no credits, no cooldown reduction.
+- **Screen-off keeps qualifying** (`runtime.ScreenStateReader` →
+  `PowerManager.isInteractive`): putting the phone down counts.
+- **Interactive backgrounding pauses** (app leaves foreground while the screen
+  is interactive): interval closes, session pauses, `APP_BACKGROUND` recorded.
+- **Configuration changes never pause** — pause decisions use
+  `ProcessLifecycleOwner`, not `Activity.onStop()`.
+- **Pause/Resume** — manual pause closes the interval immediately; resume opens
+  a fresh monotonic interval; paused time is never counted.
+- **Process-death recovery** — persisted qualified-time checkpoints every ~12s
+  (plus on lifecycle transitions). On uncertain recovery: credit only the
+  checkpointed safe point, close the unsafe open tail, mark `PAUSED`, record
+  `PROCESS_RESTORE`, require Resume. Undercounting seconds is acceptable;
+  inventing minutes is not.
+- **Reboot detection** — `elapsedRealtime` regression below the persisted
+  baseline (primary, permission-free) plus `Settings.Global.BOOT_COUNT`
+  (secondary). Reboot gaps are never credited and never estimated from wall
+  clock.
+- **Atomic, idempotent completion** — completed at the exact crossing of the
+  requirement, credited total capped at the requirement, `completedAtEpochMs`
+  persisted, completion event emitted exactly once.
+- **Morning Meditation (real)** — Today shows real
+  REQUIRED / IN-PROGRESS / PAUSED / COMPLETE state per local day
+  (`MorningSessionPolicy`), Begin Session is idempotent per session id, no
+  Skip exists, cancelled attempts never transfer progress.
+- **Active Session UX** — real timer (`12:48 / 30:00` direction from the
+  mockups), Pause/Resume, End-early calm confirmation
+  ("End this session? Your current meditation requirement will remain
+  incomplete."), breathing orb, optional `MeditationMode` framing
+  (STILLNESS / BREATH / BODY / IMAGINATION — identical qualification).
+- **Completion UX** — real recorded minutes, kind-aware calm copy. Never
+  reward/unlock language.
+- **Optional local cues** — synthesized start/complete bell + haptics, gated by
+  DataStore preferences, never part of qualification. No network audio.
+- **IPC hardened and usable** — `RecoveryRequestHandler`
+  (arrive → validate → verify caller → create/load idempotently → route into
+  session UI), caller verification on the status provider path, deny-by-default
+  `CallerVerifier` unchanged (no debug bypasses; tests inject fake verifiers).
+- **Checkpoint persistence** — `session_time_checkpoints` table (schema v2).
+
+### Foreground-service decision (documented, deferred)
+
+Per spec, no foreground service was added up front. The runtime relies on
+derived timing + checkpoints, which survive process suspension correctly
+(suspension loses only the un-checkpointed tail). **Physical QA decides**: if
+screen-off meditation is killed too aggressively on real devices, add a tightly
+scoped active-session foreground service (ACTIVE → started; terminal → stopped,
+quiet ongoing notification, documented type/permission). No wake locks.
 
 ### Not implemented (reserved for later passes)
 
-- Real qualifying meditation-time ticking and accumulation UI
-- Full active-session lifecycle (screen-off, calls, essential-access pauses,
-  process restore)
-- Morning ritual flow, evening flow completion logic
-- Real requirement/cooldown data from Routine (all such UI is placeholder copy)
-- Full IPC handling of recovery intents (activity side) and provider write
-  semantics; peer pairing + signature digest configuration
-- Insight generation/aggregation (snapshots are stored but not computed)
-- Session history list, local data management (export / clear)
-- Onboarding, profile
+- Routine cooldown/restorative policy (Pass 3) — restorative/cooldown UI is
+  still placeholder copy
+- Evening flow completion logic, insight generation
+- Peer pairing configuration (trust policy returns "no peer configured" until
+  then, so external IPC callers are rejected — by design)
+- Foreground service (see above), session history list, data management
+- Physical-device QA results (see checklist below)
 
 ---
 
@@ -78,13 +103,13 @@ integration.
 | Platform | Android (minSdk 26, targetSdk 36, compileSdk 37) |
 | Language | Kotlin (AGP 9 built-in Kotlin — see below) |
 | UI | Jetpack Compose + Material 3, Navigation Compose |
-| Persistence | Room 2.8.5 (KSP), DataStore Preferences 1.1.7 |
+| Persistence | Room 2.8.5 (KSP, schema v2), DataStore Preferences 1.1.7 |
 | Concurrency | Coroutines + Flow |
-| Testing | JUnit 4, kotlinx-coroutines-test, AndroidX Test (instrumentation) |
-| Architecture | Lightweight layered: `ui` → `domain` ← `data`, `integration` for IPC |
+| Runtime signals | ProcessLifecycleOwner (`lifecycle-process`), PowerManager, Settings.Global.BOOT_COUNT |
+| Testing | JUnit 4, kotlinx-coroutines-test, AndroidX Test + Compose UI tests |
 
 No cloud, no backend, no auth, no analytics SDKs. The app has **no INTERNET
-permission**.
+permission** and no wake locks.
 
 ---
 
@@ -97,10 +122,11 @@ Requirements: JDK 17, Android SDK (platform 37, build-tools 36.x),
 # Build debug APK
 ./gradlew assembleDebug
 
-# JVM unit tests (domain, protocol, timing, session semantics)
+# JVM unit tests (engine, domain, protocol, timing, session semantics)
 ./gradlew test
 
-# Instrumentation tests (Room roundtrip; requires a connected device/emulator)
+# Instrumentation tests (Room roundtrip, recovery intents, Compose flows;
+# requires a connected device/emulator)
 ./gradlew connectedAndroidTest
 ```
 
@@ -121,6 +147,8 @@ Windows: use `gradlew.bat` instead of `./gradlew`.
   behavior. `android.suppressUnsupportedCompileSdk` silences the AGP
   recommendation warning.
 - Versions are pinned in `gradle/libs.versions.toml`.
+- Room schema is **v2** (adds `session_time_checkpoints`); destructive fallback
+  is configured until real migrations are needed.
 
 ---
 
@@ -128,69 +156,64 @@ Windows: use `gradlew.bat` instead of `./gradlew`.
 
 ```
 com.terinit.rhythmicmeditation
-├── app                  Application, MainActivity, (AppContainer lives in data)
+├── app                  Application (lifecycle/screen wiring), MainActivity
+│                        (recovery-intent entry point)
 ├── ui
 │   ├── theme            Color/Type/Shape/Theme tokens
 │   ├── navigation       AppRoute, NavHost shell, bottom bar
 │   ├── screens          today | session | completion | evening | restorative
 │   │                    | insights | settings   (+ ViewModel per area)
 │   └── components       CalmCard, buttons, InfoBanner, SoftProgressBar, brand
+├── runtime              MeditationRuntimeController (the engine), runtime state
+│                        + events, ScreenStateReader, BootIdentityReader
 ├── domain
 │   ├── model            MeditationSession, MeditationInterval,
-│   │                    SessionInterruptionEvent, MeditationInsightSnapshot
+│   │                    SessionInterruptionEvent, MeditationInsightSnapshot,
+│   │                    MeditationMode
 │   ├── session          MeditationSessionStateMachine, MeditationSessionService
+│   │                    (accrual, exact-crossing completion, conservative
+│   │                    restore), MorningSessionPolicy
 │   ├── timing           TimeProvider, SystemTimeProvider, ElapsedTimeCalculator
 │   └── protocol         MeditationProtocol, recovery request/status DTOs,
 │                        request validator, malformed-payload field parser
 ├── data
-│   ├── local/db         MeditationDatabase
-│   ├── local/dao        4 DAOs
-│   ├── local/entity     4 Room entities
+│   ├── local/db         MeditationDatabase (v2)
+│   ├── local/dao        5 DAOs (incl. SessionTimeCheckpointDao)
+│   ├── local/entity     5 Room entities (incl. SessionTimeCheckpointEntity)
 │   ├── local/prefs      AppPreferences + AppPreferencesStore (DataStore)
-│   ├── repository       interfaces + Room implementations
+│   ├── repository       interfaces + Room implementations (incl. checkpoints)
 │   ├── mapper           entity<->domain, domain<->contract mapping
 │   └── AppContainer     manual dependency container
 ├── integration
 │   ├── contract         MeditationStatusRepository, CallerVerifier,
-│   │                    LocalMeditationStatusRepository, Bundle codec
+│   │                    RecoveryRequestHandler, CallerIdentity,
+│   │                    SystemCallerIdentityResolver, Local status repo,
+│   │                    Bundle codec
 │   ├── intent           MeditationIntents (recovery intent build/parse)
-│   └── provider         MeditationStatusProvider (ContentProvider shell)
-└── util                 TimeFormat, Ids
+│   └── provider         MeditationStatusProvider (verified, read-only)
+└── util                 TimeFormat, Ids, SessionCues (local bells/haptics)
 ```
 
 Tests mirror the source tree under `app/src/test` (with `testutil` fakes) and
-`app/src/androidTest` (Room roundtrip).
+`app/src/androidTest` (Room roundtrip, recovery intents, Compose flows).
 
 ---
 
-## Shared recovery contract (Routine ⇄ Meditation)
+## Trust model (why the engine looks like this)
 
-Defined in `domain/protocol` and `integration/*`:
-
-- **Action**: `com.terinit.rhythmicmeditation.action.START_MEDITATION_RECOVERY`
-- **Extra**: `extra_request_payload` (Bundle-encoded `MeditationRecoveryRequest`)
-- **Status provider authority**: `com.terinit.rhythmicmeditation.status`
-  (read-only; returns `MeditationRecoveryStatus` columns)
-- **Protocol version**: 1 (`MeditationProtocol.PROTOCOL_VERSION`)
-- **Permission**: `com.terinit.rhythmicmeditation.permission.STATUS_ACCESS`
-  (signature-level) guards the provider; `CallerVerifier` additionally enforces
-  deny-by-default package + signing-certificate checks. Peer identity/digests
-  are configured when Routine pairing lands — until then all external callers
-  are rejected.
-
-Recovery semantics (`MeditationSessionService.createOrReplaceSession`):
-
-- unknown id → new PENDING session
-- identical request → no-op (idempotent; no extra writes)
-- changed request → metadata replaced, recorded evidence (qualified seconds,
-  counts) preserved; a live ACTIVE/PAUSED status survives
-
-## Timing rules
-
-All qualification math uses **elapsedRealtime (monotonic)** via `TimeProvider`.
-Wall clock is stored for diagnostics only (`MeditationInterval.startedWallClockMs`
-etc.) and is never used to compute qualified time — see
-`ElapsedTimeCalculatorTest` for the tamper-resistance expectations.
+- **Qualified time is evidence, not a counter.** It is derived from monotonic
+  intervals (`elapsedRealtime`); wall clock is diagnostics only and is never
+  used for qualification — enforced by tests including clock-jump cases.
+- **Putting the phone down counts; using the phone doesn't.** Screen-off
+  continues to qualify (the open interval accrues on resume); interactive use
+  of another app closes the interval and pauses.
+- **Failure modes can only lose time.** Process death → checkpointed time only.
+  Reboot → no gap credit. Cancellation → history but never transferable credit.
+  Completion is capped at the requirement.
+- **IPC is deny-by-default.** `CallerVerifier` rejects unconfigured peers and
+  unattested callers; there are no `BuildConfig.DEBUG` bypasses. Tests inject
+  `FakeCallerTrustPolicy`.
+- **No policy here.** Cooldowns, requirements, and enforcement stay in Routine.
 
 ## Design notes
 
@@ -199,20 +222,108 @@ etc.) and is never used to compute qualified time — see
   without structural change.
 - `material-icons-extended` is used for UI glyphs; it makes the debug APK large
   (~20 MB) but release minification (when enabled) strips unused icons.
-- Dark theme is not defined in Pass 1 (light-only art direction).
-- Domain logic lives in `domain/`, never inside Composables. Composables receive
-  state from ViewModels and emit callbacks.
+- Dark theme is not defined (light-only art direction).
+- Domain logic lives in `domain/` + `runtime/`, never inside Composables.
 
-## Handoff — Pass 2 targets
+---
 
-Build on top of (do not rework):
+## Physical-device QA checklist (Pass 2)
 
-- `MeditationSessionService` (lifecycle + qualified-time accumulation),
-  `MeditationSessionStateMachine`
-- `MeditationIntervalRepository` / intervals as the recovery evidence trail
-- `TimeProvider` / `ElapsedTimeCalculator`
-- `integration/intent.MeditationIntents` + `LocalMeditationStatusRepository`
-  for the IPC side of recovery
-- `ActiveSessionScreen`/`ActiveSessionViewModel` for the real timer, pause /
-  resume semantics, screen-off and interruption handling
-- `TodayScreen` for the morning meditation flow
+Instrumentation cannot faithfully prove process lifecycle edge cases. Verify on
+real hardware before Pass 3 relies on the engine:
+
+1. Start a session, press power (screen off) 10 min, unlock → elapsed reflects
+   the gap and the session is still ACTIVE.
+2. Start a session, switch to another app (screen on) → session PAUSED within a
+   second; returning requires Resume.
+3. Start a session, background with screen off, force-stop the app from
+   recents, relaunch → PAUSED with "Session restored", only checkpointed time
+   credited (≤ 12s undercount).
+4. Start a session, reboot the device, relaunch → PAUSED, reboot notice, no gap
+   credited.
+5. Rotate during a session → session stays ACTIVE (no pause, no interruption).
+6. Receive a phone call mid-session → conservative pause (by design in Pass 2).
+7. Complete 30 real minutes → Completion screen with exactly 30 minutes.
+8. If the process is killed too aggressively during screen-off meditation →
+   implement the scoped foreground service described above.
+
+---
+
+## Pass 3 handoff — Routine integration & Restorative Gate
+
+**Branch / commit:** see `git log` — baseline `aebd142` (Pass 1) and the Pass 2
+commit on `main`; `git diff aebd142..HEAD` is the Pass 2 diff.
+
+**Recovery entry point**
+
+- Package/component: `com.terinit.rhythmicmeditation.app.MainActivity`
+  (singleTask; handles the intent in `onCreate`/`onNewIntent`) →
+  `integration.contract.RecoveryRequestHandler` → routes to
+  `AppRoute.ActiveSession` (or `AppRoute.Completion` when already completed)
+- Intent action: `com.terinit.rhythmicmeditation.action.START_MEDITATION_RECOVERY`
+- Extra: `extra_request_payload` → Bundle of `MeditationRecoveryRequest`
+  (`session_id`, `protocol_version`, `session_kind`, `required_qualified_seconds`,
+  `created_at_epoch_ms`, `expires_at_epoch_ms?`, `source_cooldown_id?`,
+  `source_risk_group_id?`, `source_rhythmic_day_id?`) — encoded/decoded via
+  `integration.contract.MeditationContractCodec` / pure
+  `domain.protocol.MeditationContractFields`
+- Validation: `MeditationRecoveryRequestValidator` (blank ids, non-positive
+  seconds/versions, newer protocol versions, unknown/STANDALONE kinds, expiry
+  ordering all rejected). Malformed payloads never create sessions.
+
+**Status surface**
+
+- Signature permission: `com.terinit.rhythmicmeditation.permission.STATUS_ACCESS`
+  (protectionLevel `signature`) + `CallerVerifier` on top (deny-by-default
+  package + SHA-256 signing-certificate digests; configure the peer via
+  `CallerTrustPolicy` — `AppContainer.callerTrustPolicy` is the wiring point)
+- ContentProvider authority: `com.terinit.rhythmicmeditation.status`, read-only
+  query (session id via `selectionArgs[0]` or the URI path segment), columns:
+  `sessionId`, `protocolVersion`, `status`, `requiredQualifiedSeconds`,
+  `completedQualifiedSeconds`, `completedAtEpochMs`, `lastUpdatedAtEpochMs`
+- Protocol version: **1** (`MeditationProtocol.PROTOCOL_VERSION`)
+
+**Session semantics**
+
+- Status enum: `PENDING, ACTIVE, PAUSED, COMPLETED, CANCELLED, EXPIRED, INVALID`
+  (transitions in `MeditationSessionStateMachine`)
+- Kind enum: `MORNING_REQUIRED, COOLDOWN_RESTORATIVE, EVENING_WIND_DOWN,
+  STANDALONE` (`STANDALONE` is local-only and cannot arrive over the protocol)
+- Morning vs cooldown-restorative: identical qualification (1,800s). Morning is
+  locally keyed (`morning-<yyyy-MM-dd>` ids, `MorningSessionPolicy`); when
+  Routine is paired it should send the rhythmic day id and use
+  `COOLDOWN_RESTORATIVE` + `sourceCooldownId` for gate-bound sessions. Evidence
+  exposed to Routine: `MeditationRecoveryStatus` above. Cancelled sessions keep
+  history but never transfer credit.
+
+**Runtime behavior summary for Routine's gate logic**
+
+- Screen-off: keeps qualifying (open interval accrues across screen-off).
+- Interactive backgrounding: closes interval + `PAUSED` + `APP_BACKGROUND`.
+- Process death: only the last ~12s checkpoint survives; `PAUSED` +
+  `PROCESS_RESTORE`; Resume required.
+- Reboot: elapsed-regression + boot-count detection; no gap credit; `PAUSED`.
+- Completion: fires at the exact crossing, total capped at
+  `requiredQualifiedSeconds`, idempotent, `completedAtEpochMs` is wall clock
+  (display only).
+
+**Tests:** `./gradlew test` → **91 unit tests, 0 failures**
+(61 Pass 1 tests remain green + 30 new: 23 `MeditationRuntimeControllerTest`,
+7 `RecoveryRequestHandlerTest`). Instrumentation (`./gradlew
+connectedAndroidTest`, requires a device): 17 tests across
+`MeditationDatabaseTest`, `MeditationIntentsTest`, `MorningFlowTest` —
+compiled and ready, not executed in this environment.
+
+**Physical-device results:** not run in this environment — execute the QA
+checklist above on hardware and record results before Pass 3 enforcement.
+
+**Known limitations**
+
+- Peer trust policy is unconfigured → all external IPC callers are rejected
+  until Pass 3 pairing (intentional).
+- `lastUpdatedAtEpochMs` is derived from known session timestamps (no separate
+  update column).
+- Foreground service deferred pending physical QA (see above).
+- Calls/Essential Access are indistinguishable from plain interactive
+  backgrounding (Pass 3 provides context).
+- Rhythmic day id is local-date based; swap to Routine's real day id at pairing.

@@ -8,7 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.terinit.rhythmicmeditation.domain.model.MeditationSessionKind
+import com.terinit.rhythmicmeditation.domain.model.MeditationMode
 import com.terinit.rhythmicmeditation.domain.protocol.MeditationProtocol
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -30,9 +30,9 @@ class AppPreferencesStore(private val dataStore: DataStore<Preferences>) {
         AppPreferences(
             sessionSoundEnabled = prefs[Keys.SESSION_SOUND_ENABLED] ?: true,
             subtleHapticsEnabled = prefs[Keys.SUBTLE_HAPTICS_ENABLED] ?: true,
-            lastSelectedMeditationMode = MeditationSessionKind.fromWire(
+            lastSelectedMeditationMode = MeditationMode.fromWire(
                 prefs[Keys.LAST_SELECTED_MEDITATION_MODE]
-            ) ?: MeditationSessionKind.MORNING_REQUIRED,
+            ) ?: MeditationMode.STILLNESS,
             onboardingComplete = prefs[Keys.ONBOARDING_COMPLETE] ?: false,
             lastOpenedTab = prefs[Keys.LAST_OPENED_TAB] ?: AppPreferences.LastTab.TODAY,
             pairedIntegrationEnabled = prefs[Keys.PAIRED_INTEGRATION_ENABLED] ?: false,
@@ -50,7 +50,7 @@ class AppPreferencesStore(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { it[Keys.SUBTLE_HAPTICS_ENABLED] = enabled }
     }
 
-    suspend fun setLastSelectedMeditationMode(mode: MeditationSessionKind) {
+    suspend fun setLastSelectedMeditationMode(mode: MeditationMode) {
         dataStore.edit { it[Keys.LAST_SELECTED_MEDITATION_MODE] = mode.name }
     }
 

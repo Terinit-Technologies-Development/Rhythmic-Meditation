@@ -38,6 +38,11 @@ class FakeMeditationSessionRepository : MeditationSessionRepository {
     override suspend fun getSession(sessionId: String): MeditationSession? =
         sessions.value[sessionId]
 
+    override suspend fun getSessionsWithIdPrefix(prefix: String): List<MeditationSession> =
+        sessions.value.values
+            .filter { it.sessionId.startsWith(prefix) }
+            .sortedBy { it.createdAtEpochMs }
+
     override suspend fun upsertSession(session: MeditationSession) {
         upsertCount++
         sessions.value = sessions.value + (session.sessionId to session)

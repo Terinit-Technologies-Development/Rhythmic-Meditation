@@ -13,6 +13,9 @@ interface MeditationSessionDao {
     @Query("SELECT * FROM meditation_sessions WHERE sessionId = :sessionId LIMIT 1")
     suspend fun getById(sessionId: String): MeditationSessionEntity?
 
+    @Query("SELECT * FROM meditation_sessions WHERE sessionId LIKE :prefix || '%' ORDER BY createdAtEpochMs ASC")
+    suspend fun getByIdPrefix(prefix: String): List<MeditationSessionEntity>
+
     @Query("SELECT * FROM meditation_sessions WHERE sessionId = :sessionId LIMIT 1")
     fun observeById(sessionId: String): Flow<MeditationSessionEntity?>
 

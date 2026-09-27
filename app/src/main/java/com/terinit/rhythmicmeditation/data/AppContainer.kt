@@ -9,7 +9,9 @@ import com.terinit.rhythmicmeditation.data.repository.MeditationSessionRepositor
 import com.terinit.rhythmicmeditation.data.repository.RoomMeditationInsightsRepository
 import com.terinit.rhythmicmeditation.data.repository.RoomMeditationIntervalRepository
 import com.terinit.rhythmicmeditation.data.repository.RoomMeditationSessionRepository
+import com.terinit.rhythmicmeditation.data.repository.RoomSessionCheckpointRepository
 import com.terinit.rhythmicmeditation.data.repository.RoomSessionInterruptionEventRepository
+import com.terinit.rhythmicmeditation.data.repository.SessionCheckpointRepository
 import com.terinit.rhythmicmeditation.data.repository.SessionInterruptionEventRepository
 import com.terinit.rhythmicmeditation.domain.session.MeditationSessionService
 import com.terinit.rhythmicmeditation.domain.timing.SystemTimeProvider
@@ -18,6 +20,16 @@ import com.terinit.rhythmicmeditation.integration.contract.CallerTrustPolicy
 import com.terinit.rhythmicmeditation.integration.contract.CallerVerifier
 import com.terinit.rhythmicmeditation.integration.contract.LocalMeditationStatusRepository
 import com.terinit.rhythmicmeditation.integration.contract.MeditationStatusRepository
+import com.terinit.rhythmicmeditation.integration.contract.RecoveryRequestHandler
+import com.terinit.rhythmicmeditation.integration.contract.SystemCallerIdentityResolver
+import com.terinit.rhythmicmeditation.runtime.BootIdentityReader
+import com.terinit.rhythmicmeditation.runtime.MeditationRuntimeController
+import com.terinit.rhythmicmeditation.runtime.ScreenStateReader
+import com.terinit.rhythmicmeditation.runtime.SystemBootIdentityReader
+import com.terinit.rhythmicmeditation.runtime.SystemScreenStateReader
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * Manual dependency container.
@@ -28,9 +40,23 @@ import com.terinit.rhythmicmeditation.integration.contract.MeditationStatusRepos
  */
 class AppContainer(context: Context) {
 
+    /** Long-lived application scope for the meditation runtime. */
+    val applicationScope: CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     val timeProvider: TimeProvider = SystemTimeProvider()
 
     val preferencesStore = AppPreferencesStore(context.applicationContext)
+
+    val screenStateReader: ScreenStateReader = SystemScreenStateReader(
+        context.applicationContext.getSystemService(Context.POWER_SERVICE)
+            as android.os.PowerManager
+    )
+
+    val bootIdentityReader: BootIdentityReader =
+        SystemBootIdentityReader(context.applicationContext)
+
+    val callerIdentityResolver = SystemCallerIdentityResolver(context.applicationContext)
 
     private val database: MeditationDatabase = MeditationDatabase.getInstance(context)
 
@@ -46,6 +72,9 @@ class AppContainer(context: Context) {
     val insightsRepository: MeditationInsightsRepository =
         RoomMeditationInsightsRepository(database.meditationInsightSnapshotDao())
 
+    val checkpointRepository: SessionCheckpointRepository =
+        RoomSessionCheckpointRepository(database.sessionTimeCheckpointDao())
+
     val sessionService: MeditationSessionService = MeditationSessionService(
         sessionRepository = sessionRepository,
         intervalRepository = intervalRepository,
@@ -56,7 +85,7 @@ class AppContainer(context: Context) {
     /**
      * Trust policy for IPC callers: the peer identity comes from the paired
      * package setting. Signature digests are configured when Routine pairing
-     * is completed (later pass); until then every external caller is denied.
+     * is completed (Pass 3); until then every external caller is denied.
      */
     private val callerTrustPolicy = object : CallerTrustPolicy {
         override fun expectedPackageName(): String? = null // set from preferences when pairing lands
@@ -70,4 +99,24 @@ class AppContainer(context: Context) {
             sessionService = sessionService,
             sessionRepository = sessionRepository
         )
+
+    /**
+     * The meditation engine. Owns qualified-time accounting, conservative
+     * recovery, and translation of device/lifecycle events.
+     */
+    val runtimeController: MeditationRuntimeController = MeditationRuntimeController(
+        sessionService = sessionService,
+        sessionRepository = sessionRepository,
+        checkpointRepository = checkpointRepository,
+        timeProvider = timeProvider,
+        screenStateReader = screenStateReader,
+        bootIdentityReader = bootIdentityReader,
+        scope = applicationScope
+    )
+
+    val recoveryRequestHandler: RecoveryRequestHandler = RecoveryRequestHandler(
+        callerVerifier = callerVerifier,
+        sessionService = sessionService,
+        sessionStatusRepository = meditationStatusRepository
+    )
 }
