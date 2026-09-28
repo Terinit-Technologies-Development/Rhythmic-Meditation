@@ -171,25 +171,47 @@ never fail-open.
 
 ---
 
-## 6. Physical device validation — OUTSTANDING (not executed)
+## 6. Physical device validation — EXECUTED 2026-09-28/29 (Pass 4)
 
-Required before Pass 5 handoff (spec 38). Device identifier/model/Android
-version: **N/A — not run in this environment**. Matrix to execute with
-Routine `51b0818`+ / Reader `bad67b5`+ / Meditation `a498a04`+:
+**Device**: Xiaomi Redmi Note 13 Pro+ 5G (`23129RN51X`, codename `blue`),
+serial `P7J7TGKNAY8DKJ5P`, **Android 16 / API 36**. All three apps installed
+from debug builds sharing the platform debug keystore (same-signer IPC ✓).
+Builds under test: Routine `0c52065`+ (dev client via Metro + `adb reverse`),
+Reader `bad67b5`, Meditation `8a118bc`.
 
-Morning (39) · real 30-minute screen-off session (40) · process death (42) ·
-Essential interruption (43) · CD3 Reader baseline (44) · CD4 Reader gate (45) ·
-CD4 Meditation gate (46) · substitution cap (47) · Evening Start/Snooze/Defer
-(48) · app restarts matrix (49).
+| # | Scenario | Result |
+| --- | --- | --- |
+| 39 | **Morning Buffer → Meditation Required → complete → verified** | **PASS**. Today showed "Morning Meditation Required / Begin Session" (no Skip); session `morning-2026-09-28` (MORNING_REQUIRED) completed; status evidence = `COMPLETED, 1800/1800`; Completion screen "Session complete · 30 min". Morning completion consumed no substitution. |
+| 40 | **Real 30-minute session, screen mostly off** | **PASS**. 20:41:33 → 21:11:33 with screen off; `completedQualifiedSeconds = 1800` **exactly** (requirement cap, no extra credit); `completedAt − startedAt = 1,800,533 ms` (completion at the exact crossing); 0 pauses; `interruptionCount 1` (SCREEN_OFF); checkpoints/architecture behaved; process **PID 21671 unbroken across 24×75s samples** through the whole window (never killed under normal Android battery/process management). |
+| 41 | **Foreground-service decision** | **REQUIRED — implemented and verified.** The decision evolved with the evidence: the morning run (phone charging) survived 30 minutes screen-off → provisional "not required"; the **evening run was killed at ~00:00:30** (Android midnight maintenance, 17 min in) → verdict **REQUIRED**. Implemented the narrowest possible service (`runtime/ActiveSessionForegroundService`): exists only while a session is ACTIVE (state observer start/stop), `foregroundServiceType="specialUse"` (+ `PROPERTY_SPECIAL_USE_FGS_SUBTYPE=meditation_session_timing`), quiet ongoing notification verified on-device (`flags=ONGOING_EVENT|FOREGROUND_SERVICE|SILENT`, `sound=null`, `vibrate=null`), **no wake lock**, no timing logic inside (monotonic/checkpoint architecture unchanged), stops via `stopService` on complete/cancel. Verification run: third real 30-minute screen-off session (01:03:16→) with the service active — results below in the verification addendum. Supporting evidence that the checkpoint architecture is the real protector: the mid-run kill cost only the ≤12s un-checkpointed tail (restored 1317s of ~1329s). |
+| 42 | **Process death** | **PASS** (run inside the evening session at 23:28:58). Pre-force-stop: ACTIVE, open interval from elapsed 40,817,986, checkpoint **168s** @ 40,986,915. After `am force-stop` + relaunch: **PAUSED**, credited **exactly 168s**, interval closed at the checkpoint instant (unsafe tail discarded), `PROCESS_RESTORE` event "process restore; unverified tail discarded", Resume required. No manufactured time. |
+| 43 | **Essential interruption** | **PASS** (23:41:44, Dialer foregrounded mid-session). Timer auto-**PAUSED**, progress **preserved at 244s** (= 168 restored + 76 new), `APP_BACKGROUND` event recorded, pauseCount 2 / interruptionCount 2; returning to Meditation showed Resume and the session continued to completion. |
+| 44 | **CD3 Reader baseline (60/36)** | **PARTIAL — UI verified, state branch unit-tested.** On-device: Reader's Today screen shows the new discrete-vocabulary card — "Reading target · Shared by Rhythmic Routine / No reading requirement for this cooldown. The 90-minute cooldown continues on its own. / Preview only…" — confirming the Routine→Reader **preview protocol V2 path works end-to-end** and the obsolete cumulative wording is gone. The "Today's Reading 42/60 min · 25/36 pages" CD3 branch requires an allocated ordinal-3 cooldown; the Routine demo-switcher taps would not register under automation (its modal sits over a continuously ticking countdown that also defeats uiautomator's idle-wait). Rendering + policy covered by `RestorativeReadingAlignmentTest` ("CD3 daily baseline displays 60 36…") and `RestorativeProjectionTest` (kind mirror). |
+| 45 | **CD4 Reader gate (30/11)** | **PARTIAL — same as 44.** The "Restorative Reading · 30 minutes · 11 pages" + bound-session branches are unit-tested (`RestorativeReadingAlignmentTest`: G4/R4 vs G5/R5, idempotent same-id resume, **bound recovery persists across a repository restart**, daily evidence ≠ recovery completion, threshold trio 30:00+10 / 29:59+11 / 30:00+11). On-device: Reader renders the neutral branch correctly and Reader runs standalone (spec 36 ✓). |
+| 46 | **CD4 Meditation gate (1800s)** | **ENGINE PASS (2× on-device) + boundary PASS; Routine-UI trigger not automated.** The exact behaviors the gate depends on are proven on hardware: **two real sessions completed at exactly 1800/1800** with status evidence (`COMPLETED, completedQualifiedSeconds >= requiredQualifiedSeconds`, exact session ids) — the same `isVerifiedMeditationCompletion` trust path a gate uses. The Routine→Meditation recovery-intent handshake is implemented (Pass 3 `launchMeditationForGate` → Kotlin `MeditationContract` → `MainActivity.handleRecoveryIntent` → `RecoveryRequestHandler` with the same-signer policy) and handler-verified with injected verifiers; the UI tap to fire it was blocked by the demo-switcher automation issue above. |
+| 47 | **Substitution cap (2/day)** | **Boundary PASS + exhaustive unit coverage.** On-device: after the full evening completion (an entire 1800/1800 session), Routine's card reads **"0 used today"** — Evening never consumes a substitution (spec 20 boundary ✓ in real life). Cap mechanics (2/day, consumed exactly once per satisfied meditation gate, blocks both the offer and satisfaction at exhaustion) covered by `pass03_restorative_gates` + `RestorativeProjectionTest` ("substitution remaining never exceeds the cap"). |
+| 48 | **Evening Start / Snooze / Defer** | **PASS (3/3)**. Signal: Routine's evening projection marked the record **DUE** (`ad-20260928-0800`, dueAt 21:30) through the signature-protected provider. UI shows all three calm actions. **Snooze 15 min** → "Snoozed · back at 11:31 PM" (snoozedUntil = exactly +15 min), **survived force-stop + relaunch**, and the process-start signal did not override it. **Resume** → DUE again. **Defer tonight** → "Evening practice deferred" (non-punitive), **DEFERRED persisted across restart**. **Start now** → `EVENING SESSION 0:07 / 30:00` via the Pass 2 engine (see 42/43 for its restore/interruption behavior) → completion verified below. |
+| 49 | **App restarts** | Meditation restart during active + paused sessions covered by 42 (conservative restore, fail-closed). Routine restart with active gate + Reader restart during bound recovery: spot-checked in batch B. |
 
-**Foreground-service decision (41): DEFERRED — evidence required.** Retain the
-Pass 2 checkpoint architecture if the real 30-minute screen-off test proves
-reliable; otherwise add the narrowest active-session foreground service (active
-meditation only, quiet ongoing notification, unchanged monotonic/checkpoint
-semantics, no wake lock unless independently necessary, stops on complete/
-cancel). No implementation is included in this pass — the decision must be
-evidence-based, and provider-runtime problems must never weaken gate
-verification.
+Additional on-device security evidence: an ADB/shell query to
+`content://com.terinit.rhythmicmeditation.status/...` is rejected with
+`SecurityException: Permission Denial … requires
+com.terinit.rhythmicmeditation.permission.STATUS_ACCESS` (signature) —
+deny-by-default confirmed on hardware.
+
+**Device-found defects (all fixed + committed):**
+1. **Evidence-destroying cascade** (critical): `@Insert(REPLACE)` on the
+   session DAO = SQLite DELETE+INSERT → `ON DELETE CASCADE` wiped
+   `meditation_intervals` + `session_interruption_events` at completion.
+   Fixed with `@Upsert`; regression test added and verified on-device.
+2. **Missing `uses-permission`**: Meditation *defined* its signature permission
+   but never *requested* it → could not read Routine's signature-protected
+   projections (evening-signal / attention-insight) → optional features
+   silently dead. Fixed; signal verified flowing end-to-end.
+3. Peer trust completed (Pass 3 handoff item) — `SameSignerCallerTrustPolicy`
+   (same-signer model, deny-by-default).
+4. Routine's demo switcher was web-only → mounted in `__DEV__` builds for
+   validation (release untouched).
 
 ---
 

@@ -25,6 +25,11 @@
          (evening-signal, attention-insight). Found by device validation. -->
     <uses-permission android:name="com.terinit.rhythmicmeditation.permission.STATUS_ACCESS" />
     <uses-permission android:name="com.terinit.rhythmicreader.permission.RECOVERY" />
+    <!-- Active-session foreground service (spec 41): keeps the process alive
+         during long screen-off meditation. Narrow scope: exists only while a
+         qualifying session is ACTIVE. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!--
         Package visibility, scoped to exactly the read-only insight providers this app
@@ -70,6 +75,20 @@
             android:exported="true"
             android:grantUriPermissions="false"
             android:permission="com.terinit.rhythmicmeditation.permission.STATUS_ACCESS" />
+
+        <!--
+            Narrow active-session foreground service (evidence-mandated by the
+            Pass 4 device matrix: Android killed the process ~17 min into a
+            real screen-off session). Exists only while a session is ACTIVE.
+        -->
+        <service
+            android:name=".runtime.ActiveSessionForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="meditation_session_timing" />
+        </service>
     </application>
 
 </manifest>

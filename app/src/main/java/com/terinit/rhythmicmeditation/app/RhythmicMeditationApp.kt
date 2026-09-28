@@ -39,6 +39,26 @@ class RhythmicMeditationApp : Application() {
         registerProcessLifecycleObserver()
         registerScreenReceiver()
 
+        // The narrow active-session foreground service exists ONLY while a
+        // qualifying session is ACTIVE (evidence-mandated: the platform killed
+        // the process mid-session during screen-off). Timing logic itself
+        // stays in the runtime — the service is keep-alive only.
+        container.applicationScope.launch {
+            container.runtimeController.state.collect { state ->
+                val active =
+                    state.session?.status == com.terinit.rhythmicmeditation.domain.model.MeditationSessionStatus.ACTIVE
+                if (active) {
+                    com.terinit.rhythmicmeditation.runtime.ActiveSessionForegroundService.start(
+                        this@RhythmicMeditationApp
+                    )
+                } else {
+                    com.terinit.rhythmicmeditation.runtime.ActiveSessionForegroundService.stop(
+                        this@RhythmicMeditationApp
+                    )
+                }
+            }
+        }
+
         // Sessions left ACTIVE by a previous process are restored
         // conservatively: only checkpointed time survives.
         container.applicationScope.launch {
