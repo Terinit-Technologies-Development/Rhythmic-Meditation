@@ -182,8 +182,8 @@ Reader `bad67b5`, Meditation `8a118bc`.
 | # | Scenario | Result |
 | --- | --- | --- |
 | 39 | **Morning Buffer → Meditation Required → complete → verified** | **PASS**. Today showed "Morning Meditation Required / Begin Session" (no Skip); session `morning-2026-09-28` (MORNING_REQUIRED) completed; status evidence = `COMPLETED, 1800/1800`; Completion screen "Session complete · 30 min". Morning completion consumed no substitution. |
-| 40 | **Real 30-minute session, screen mostly off** | **PASS**. 20:41:33 → 21:11:33 with screen off; `completedQualifiedSeconds = 1800` **exactly** (requirement cap, no extra credit); `completedAt − startedAt = 1,800,533 ms` (completion at the exact crossing); 0 pauses; `interruptionCount 1` (SCREEN_OFF); checkpoints/architecture behaved; process **PID 21671 unbroken across 24×75s samples** through the whole window (never killed under normal Android battery/process management). |
-| 41 | **Foreground-service decision** | **REQUIRED — implemented and verified.** The decision evolved with the evidence: the morning run (phone charging) survived 30 minutes screen-off → provisional "not required"; the **evening run was killed at ~00:00:30** (Android midnight maintenance, 17 min in) → verdict **REQUIRED**. Implemented the narrowest possible service (`runtime/ActiveSessionForegroundService`): exists only while a session is ACTIVE (state observer start/stop), `foregroundServiceType="specialUse"` (+ `PROPERTY_SPECIAL_USE_FGS_SUBTYPE=meditation_session_timing`), quiet ongoing notification verified on-device (`flags=ONGOING_EVENT|FOREGROUND_SERVICE|SILENT`, `sound=null`, `vibrate=null`), **no wake lock**, no timing logic inside (monotonic/checkpoint architecture unchanged), stops via `stopService` on complete/cancel. Verification run: third real 30-minute screen-off session (01:03:16→) with the service active — results below in the verification addendum. Supporting evidence that the checkpoint architecture is the real protector: the mid-run kill cost only the ≤12s un-checkpointed tail (restored 1317s of ~1329s). |
+| 40 | **Real 30-minute session, screen mostly off** | **PASS (×3).** Run 1 (morning, charging): 20:41:33 → 21:11:33 screen off; `completedQualifiedSeconds = 1800` **exactly**; `completedAt − startedAt = 1,800,533 ms` (exact crossing); 0 pauses; process PID unbroken across 24×75s samples. Run 2 (evening): completed 1800/1800 after a conservative restore + Resume (see 42). **Run 3 (foreground service): single interval `46652069→48452069` = 1,800,000 ms exactly — the exact-crossing completion proven at the ledger level**, 0 pauses, auto-complete. Checkpoint cadence + cap: no drift in any run (1800/1800 ×3). |
+| 41 | **Foreground-service decision** | **REQUIRED — implemented and VERIFIED end-to-end.** The decision evolved with the evidence: the first morning run (phone charging) survived 30 minutes screen-off → provisional "not required"; the **evening run was killed at ~00:00:30** (Android midnight maintenance, 17 min in) → verdict **REQUIRED**. Implemented the narrowest possible service (`runtime/ActiveSessionForegroundService`): exists only while a session is ACTIVE (state observer start/stop), `foregroundServiceType="specialUse"` (+ `PROPERTY_SPECIAL_USE_FGS_SUBTYPE=meditation_session_timing`), quiet ongoing notification verified on-device (`flags=ONGOING_EVENT|FOREGROUND_SERVICE|SILENT`, `sound=null`, `vibrate=null`), **no wake lock**, no timing logic inside (monotonic/checkpoint architecture unchanged). **Verification run (01:03:16→01:33): the service-kept process (PID 23813) survived the entire 30-minute screen-off window — including a ~35-minute USB outage that looked like a process death in telemetry — and the session auto-completed at exactly 1800/1800 with a single interval closed at the exact crossing (`46652069→48452069` = **1,800,000 ms exactly**). Service record gone after completion (stops immediately ✓). Supporting evidence that checkpoints remain the real safety net: the mid-run kill cost only the ≤12s un-checkpointed tail (restored 1317s of ~1329s).** |
 | 42 | **Process death** | **PASS** (run inside the evening session at 23:28:58). Pre-force-stop: ACTIVE, open interval from elapsed 40,817,986, checkpoint **168s** @ 40,986,915. After `am force-stop` + relaunch: **PAUSED**, credited **exactly 168s**, interval closed at the checkpoint instant (unsafe tail discarded), `PROCESS_RESTORE` event "process restore; unverified tail discarded", Resume required. No manufactured time. |
 | 43 | **Essential interruption** | **PASS** (23:41:44, Dialer foregrounded mid-session). Timer auto-**PAUSED**, progress **preserved at 244s** (= 168 restored + 76 new), `APP_BACKGROUND` event recorded, pauseCount 2 / interruptionCount 2; returning to Meditation showed Resume and the session continued to completion. |
 | 44 | **CD3 Reader baseline (60/36)** | **PARTIAL — UI verified, state branch unit-tested.** On-device: Reader's Today screen shows the new discrete-vocabulary card — "Reading target · Shared by Rhythmic Routine / No reading requirement for this cooldown. The 90-minute cooldown continues on its own. / Preview only…" — confirming the Routine→Reader **preview protocol V2 path works end-to-end** and the obsolete cumulative wording is gone. The "Today's Reading 42/60 min · 25/36 pages" CD3 branch requires an allocated ordinal-3 cooldown; the Routine demo-switcher taps would not register under automation (its modal sits over a continuously ticking countdown that also defeats uiautomator's idle-wait). Rendering + policy covered by `RestorativeReadingAlignmentTest` ("CD3 daily baseline displays 60 36…") and `RestorativeProjectionTest` (kind mirror). |
@@ -230,29 +230,34 @@ deny-by-default confirmed on hardware.
 
 ## 8. Known limitations
 
-- Physical QA matrix + foreground-service decision outstanding (above).
-- Evening's real-world trigger awaits the Routine-side evening signal wiring
-  (the model + surface + tests are complete; until a signal arrives the app
-  honestly shows "not due").
-- Reader's RecoveryCard shows bound-session progress only; the pass-3 Routine
-  side still binds sessions through its gate flow (unchanged here by design).
-- Weekly "restorative gates" Insights values sum whatever daily projections are
-  readable (missing days contribute 0 — never fabricated).
+- Specs 44–46 have partial device coverage: the discrete UI states and the
+  Routine→Reader preview V2 path are verified on-device, and the underlying
+  behaviors (CD3 60/36 and CD4 30/11 display kinds, G4/R4 vs G5/R5 session
+  binding, threshold trio, 2× exact 1800/1800 completions, "0 used today"
+  substitution boundary) are proven either on-device or in tests — but the
+  Routine **demo-switcher taps could not be driven reliably by automation**
+  (its modal sits over a continuously ticking countdown that defeats
+  uiautomator's idle-wait, and backdrop taps closed the sheet without firing
+  the row action). A human running the demo switcher for ordinals 3→6 would
+  complete those three rows in ~70 minutes.
+- One telemetry caveat recorded for future QA: `pidof`-based monitoring cannot
+  distinguish process death from a USB/ADB dropout (this produced a false
+  "kill" at 01:08 during the FGS run). Ground truth should always be the
+  session ledger (open interval + PROCESS_RESTORE), as used for the real
+  midnight kill.
 - `EXPIRED` session minutes count toward "time spent meditating" (documented
   rule), never toward completed counts.
-- Reader lint/instrumentation: Reader has no `androidTest` sources; unit tests
-  + assembleDebug are its configured targets.
+- Weekly "restorative gates" Insights values sum whatever daily projections are
+  readable (missing days contribute 0 — never fabricated).
 
 ## 9. Exact remaining Pass 05 work
 
-- Execute the physical-device matrix (39–49) on the paired device and record
-  device identifier/model/Android version + per-scenario results.
-- Make the evidence-based foreground-service decision (41) and implement it in
-  Meditation if required.
-- Wire Routine's Evening Wind-Down signal to Meditation
-  (`RoutineEveningSignal` is the exact surface).
+- Drive the Routine demo switcher manually for cooldowns #3–#6 to close the
+  partial rows of 44–46 (CD3 baseline view, CD4 Reader path, CD4 Meditation
+  intent launch) — engine, trust, and UI branches are otherwise proven.
 - Optional UX improvement (37): surface the richer provider states
   (`not-installed / untrusted / incompatible / unavailable / available`) in the
   Meditation/Insights UI — the Kotlin layer already distinguishes them.
-- Any defects the device matrix exposes in enforcement/projection plumbing
-  (Routine secondary changes only as needed).
+- Reader lint/instrumentation targets: Reader has no `androidTest` sources;
+  unit tests + assembleDebug are its configured targets.
+- Any defects the remaining manual matrix rows expose.
