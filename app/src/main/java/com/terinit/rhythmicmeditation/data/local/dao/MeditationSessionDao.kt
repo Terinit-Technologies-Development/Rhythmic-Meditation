@@ -1,9 +1,8 @@
 package com.terinit.rhythmicmeditation.data.local.dao
 
 import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 import com.terinit.rhythmicmeditation.data.local.entity.MeditationSessionEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -29,7 +28,14 @@ interface MeditationSessionDao {
     @Query("SELECT * FROM meditation_sessions ORDER BY createdAtEpochMs DESC")
     fun observeAll(): Flow<List<MeditationSessionEntity>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    /**
+     * True update-or-insert semantics (NOT OnConflictStrategy.REPLACE):
+     * SQLite REPLACE deletes the old row first, which would fire the
+     * ON DELETE CASCADE on meditation_intervals / session_interruption_events
+     * and destroy the evidence trail exactly when a session is completed.
+     * Found by physical-device validation (Pass 4).
+     */
+    @Upsert
     suspend fun upsert(entity: MeditationSessionEntity)
 
     @Query("UPDATE meditation_sessions SET status = :status WHERE sessionId = :sessionId")

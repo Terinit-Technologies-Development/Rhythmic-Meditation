@@ -173,6 +173,44 @@ class MeditationDatabaseTest {
     }
 
     @Test
+    fun sessionUpsertPreservesIntervalAndInterruptionEvidence() = runTest {
+        // Regression (found by physical-device validation): SQLite REPLACE is
+        // DELETE + INSERT, which fired ON DELETE CASCADE and wiped the
+        // evidence trail at completion. @Upsert must not do that.
+        val sessionDao = database.meditationSessionDao()
+        val intervalDao = database.meditationIntervalDao()
+        val interruptionDao = database.sessionInterruptionEventDao()
+
+        sessionDao.upsert(sessionEntity())
+        intervalDao.insert(
+            MeditationIntervalEntity(
+                sessionId = "session-1",
+                startedElapsedRealtimeMs = 1_000,
+                endedElapsedRealtimeMs = null,
+                startedWallClockMs = 1_700_000_000_000L,
+                endedWallClockMs = null
+            )
+        )
+        interruptionDao.insert(
+            com.terinit.rhythmicmeditation.data.local.entity.SessionInterruptionEventEntity(
+                sessionId = "session-1",
+                type = "SCREEN_OFF",
+                occurredAtEpochMs = 1_700_000_001_000L,
+                note = null
+            )
+        )
+
+        // The completion path upserts the session row (same id).
+        sessionDao.upsert(
+            sessionEntity(status = "COMPLETED", completedQualifiedSeconds = 1_800)
+        )
+
+        assertEquals(1, intervalDao.getForSession("session-1").size)
+        assertEquals(1, interruptionDao.getForSession("session-1").size)
+        assertEquals("COMPLETED", sessionDao.getById("session-1")!!.status)
+    }
+
+    @Test
     fun deletingSessionCascadesToItsIntervals() = runTest {
         val sessionDao = database.meditationSessionDao()
         val intervalDao = database.meditationIntervalDao()

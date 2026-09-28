@@ -43,6 +43,10 @@ class RhythmicMeditationApp : Application() {
         // conservatively: only checkpointed time survives.
         container.applicationScope.launch {
             container.runtimeController.initializeAfterProcessStart()
+            // Routine owns the Evening Wind-Down trigger: sync the narrow
+            // evening projection on process start (fail-safe — an absent or
+            // unreadable Routine simply means "not due").
+            container.eveningMeditationController.syncFromSignal()
         }
     }
 

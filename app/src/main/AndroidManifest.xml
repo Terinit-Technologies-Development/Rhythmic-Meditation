@@ -20,6 +20,10 @@
         provider is guarded by this signature permission; nothing broader is requested
         and no book titles, contents, or annotations ever cross the boundary.
     -->
+    <!-- Own signature permission: must be REQUESTED (not just declared) to
+         hold it — required to read Routine's signature-protected projections
+         (evening-signal, attention-insight). Found by device validation. -->
+    <uses-permission android:name="com.terinit.rhythmicmeditation.permission.STATUS_ACCESS" />
     <uses-permission android:name="com.terinit.rhythmicreader.permission.RECOVERY" />
 
     <!--
@@ -30,6 +34,8 @@
     <queries>
         <provider android:authorities="com.terinit.rhythmicroutine.attention-insight" />
         <provider android:authorities="com.terinit.rhythmicroutine.qa.attention-insight" />
+        <provider android:authorities="com.terinit.rhythmicroutine.evening-signal" />
+        <provider android:authorities="com.terinit.rhythmicroutine.qa.evening-signal" />
         <provider android:authorities="com.terinit.rhythmicreader.evidence" />
     </queries>
 

@@ -10,6 +10,14 @@ interface CallerTrustPolicy {
 
     /** Expected signing certificate digests of the peer (empty until configured). */
     fun expectedSigningCertificateDigests(): Set<String>
+
+    /**
+     * Package-level acceptance. Defaults to the single expected package;
+     * multi-companion policies (e.g. [SameSignerCallerTrustPolicy]) override
+     * this while keeping signature verification mandatory.
+     */
+    fun isAcceptedPackage(packageName: String?): Boolean =
+        packageName != null && packageName == expectedPackageName()
 }
 
 /**
@@ -26,16 +34,12 @@ class CallerVerifier(private val trustPolicy: CallerTrustPolicy) {
         callingPackage: String?,
         callingSigningCertificateDigests: Set<String>
     ): Result<Unit> {
-        val expectedPackage = trustPolicy.expectedPackageName()
-            ?: return Result.failure(
-                SecurityException("No paired peer configured; rejecting caller")
-            )
-        if (callingPackage.isNullOrBlank()) {
-            return Result.failure(SecurityException("Caller package is unknown"))
-        }
-        if (callingPackage != expectedPackage) {
+        if (!trustPolicy.isAcceptedPackage(callingPackage)) {
             return Result.failure(
-                SecurityException("Caller '$callingPackage' is not the paired peer")
+                SecurityException(
+                    if (callingPackage.isNullOrBlank()) "Caller package is unknown"
+                    else "Caller '$callingPackage' is not a paired peer"
+                )
             )
         }
         val expectedDigests = trustPolicy.expectedSigningCertificateDigests()

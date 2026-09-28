@@ -21,11 +21,13 @@ import com.terinit.rhythmicmeditation.domain.timing.TimeProvider
 import com.terinit.rhythmicmeditation.integration.contract.AttentionInsightClient
 import com.terinit.rhythmicmeditation.integration.contract.CallerTrustPolicy
 import com.terinit.rhythmicmeditation.integration.contract.CallerVerifier
+import com.terinit.rhythmicmeditation.integration.contract.SameSignerCallerTrustPolicy
 import com.terinit.rhythmicmeditation.integration.contract.ContentResolverAttentionInsightClient
 import com.terinit.rhythmicmeditation.integration.contract.ContentResolverReadingInsightClient
 import com.terinit.rhythmicmeditation.integration.contract.LocalMeditationStatusRepository
 import com.terinit.rhythmicmeditation.integration.contract.MeditationStatusRepository
 import com.terinit.rhythmicmeditation.integration.contract.ReadingInsightClient
+import com.terinit.rhythmicmeditation.integration.contract.ContentResolverRoutineEveningSignal
 import com.terinit.rhythmicmeditation.integration.contract.RecoveryRequestHandler
 import com.terinit.rhythmicmeditation.integration.contract.RoutineEveningSignal
 import com.terinit.rhythmicmeditation.integration.contract.SystemCallerIdentityResolver
@@ -95,14 +97,15 @@ class AppContainer(context: Context) {
     )
 
     /**
-     * Trust policy for IPC callers: the peer identity comes from the paired
-     * package setting. Signature digests are configured when Routine pairing
-     * is completed (Pass 3); until then every external caller is denied.
+     * Peer trust for IPC callers (Pass 3 handoff "final equivalent"): the
+     * Routine package(s) are trusted only with signing certificates identical
+     * to Meditation's own signer. Deny-by-default — until a companion with our
+     * signer calls, every external caller is rejected. No debug bypass.
      */
-    private val callerTrustPolicy = object : CallerTrustPolicy {
-        override fun expectedPackageName(): String? = null // set from preferences when pairing lands
-        override fun expectedSigningCertificateDigests(): Set<String> = emptySet()
-    }
+    private val callerTrustPolicy = SameSignerCallerTrustPolicy(
+        ownPackageName = context.applicationContext.packageName,
+        identityResolver = SystemCallerIdentityResolver(context.applicationContext)
+    )
 
     val callerVerifier = CallerVerifier(callerTrustPolicy)
 
@@ -131,7 +134,8 @@ class AppContainer(context: Context) {
      * default is the null-returning standalone implementation. Swap in the
      * Routine-backed implementation when pairing lands.
      */
-    val routineEveningSignal: RoutineEveningSignal = UnavailableRoutineEveningSignal
+    val routineEveningSignal: RoutineEveningSignal =
+        ContentResolverRoutineEveningSignal(context.applicationContext.contentResolver)
 
     /**
      * The optional Evening Wind-Down runtime. Local-first and standalone: the
