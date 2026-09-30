@@ -274,9 +274,12 @@ deny-by-default confirmed on hardware.
   the test runner's default debug key could not update the installed shared-QA-
   signer package (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`), and the test setup
   left the prior package absent. The current debug APK was reinstalled with the
-  shared ecosystem signer. Its pre-test private-data archive is intact; device
-  data restoration is pending renewed ADB authorization. Prior
-  instrumentation/provider evidence remains as described in section 6.
+  shared ecosystem signer; the pre-test archive was restored. The restored
+  database passes `PRAGMA integrity_check` and contains both original sessions,
+  including the completed 1800/1800 bound Meditation session and its interval
+  row. A cold launch loaded the restored Morning Meditation Required state.
+  This remains a 0-test instrumentation attempt; prior instrumentation/provider
+  evidence is described in section 6.
 - The Reader/Routine/Meditation physical rows above retain their recorded
   evidence classifications; unit coverage and provider-session runs do not
   close the remaining Routine gate-trigger and full matrix rows.
