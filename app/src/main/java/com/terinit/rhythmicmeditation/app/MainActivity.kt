@@ -29,6 +29,7 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     private val pendingRoute = MutableStateFlow<String?>(null)
+    private val pendingRouteState = pendingRoute.asStateFlow()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,7 +45,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             RhythmicMeditationTheme {
                 RhythmicMeditationRoot(
-                    pendingRoute = pendingRoute.asStateFlow(),
+                    pendingRoute = pendingRouteState,
                     onRouteConsumed = { pendingRoute.value = null }
                 )
             }

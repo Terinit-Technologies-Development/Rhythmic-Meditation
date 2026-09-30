@@ -1,10 +1,13 @@
 # SW-2026-004 — Pass 04 Handoff: Reader Alignment + Evening Wind-Down + Insights
 
-Status: **implemented, tested, and committed across three repositories.**
-Physical-device validation (specs 38–49) was **NOT executed in this
-environment** (no paired device available) and is therefore explicitly
-**outstanding** — per the non-negotiables, physical QA is not declared complete.
-The foreground-service decision is consequently **deferred pending evidence**.
+Status: **Pass 04 is implemented and automated checks pass.** Physical validation
+was executed on the Redmi Note 13 Pro+ 5G; the results and partial rows are
+recorded in section 6. The narrow active-session foreground service is
+**required and verified** by the 30-minute screen-off run. Routine and Reader
+v1.2 in-place upgrade trials are now recorded; the full cross-app qualification
+matrix remains incomplete. See
+`Rhythmic-Routine/docs/releases/SW-2026-004-CLOSEOUT.md` for the current
+ecosystem status.
 
 ---
 
@@ -261,3 +264,21 @@ deny-by-default confirmed on hardware.
 - Reader lint/instrumentation targets: Reader has no `androidTest` sources;
   unit tests + assembleDebug are its configured targets.
 - Any defects the remaining manual matrix rows expose.
+
+## 10. SW-2026-004 closeout update — 2026-09-30
+
+- Meditation unit tests: **175 passed, 0 failures**.
+- `:app:assembleDebug` and `:app:lintDebug`: **passed** after hoisting
+  `pendingRoute.asStateFlow()` to a stable `MainActivity` property.
+- A final `:app:connectedDebugAndroidTest` attempt on the Redmi started 0 tests:
+  the test runner's default debug key could not update the installed shared-QA-
+  signer package (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`), and the test setup
+  left the prior package absent. The current debug APK was reinstalled with the
+  shared ecosystem signer. Its pre-test private-data archive is intact; device
+  data restoration is pending renewed ADB authorization. Prior
+  instrumentation/provider evidence remains as described in section 6.
+- The Reader/Routine/Meditation physical rows above retain their recorded
+  evidence classifications; unit coverage and provider-session runs do not
+  close the remaining Routine gate-trigger and full matrix rows.
+- No release, store submission, or production promotion is authorized by this
+  handoff.
