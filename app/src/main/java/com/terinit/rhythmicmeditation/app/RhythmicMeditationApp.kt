@@ -29,12 +29,18 @@ import kotlinx.coroutines.launch
  */
 class RhythmicMeditationApp : Application() {
 
-    lateinit var container: AppContainer
-        private set
+    /**
+     * Content providers can be queried before Application.onCreate() runs.
+     * Keep the container lazy so a cold-start status-provider request is safe;
+     * onCreate below still initializes it before registering process observers.
+     */
+    val container: AppContainer by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        AppContainer(this)
+    }
 
     override fun onCreate() {
         super.onCreate()
-        container = AppContainer(this)
+        container
 
         registerProcessLifecycleObserver()
         registerScreenReceiver()
