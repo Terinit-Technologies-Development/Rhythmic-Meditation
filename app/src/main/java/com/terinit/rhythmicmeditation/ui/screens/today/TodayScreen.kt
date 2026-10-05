@@ -15,7 +15,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BarChart
-import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Lock
@@ -59,13 +58,13 @@ import java.util.Locale
  * today's morning session runs, in-progress / paused while it does, COMPLETE
  * afterwards. There is deliberately no Skip action.
  *
- * Restorative balance and cooldown numbers remain placeholders until Rhythmic
- * Routine supplies policy in Pass 3.
+ * Cooldown and restorative policy belongs to Rhythmic Routine. This screen
+ * links there instead of showing a second, locally invented choice flow.
  */
 @Composable
 fun TodayScreen(
     onStartSession: () -> Unit,
-    onOpenRestorativeChoice: () -> Unit,
+    onOpenRoutine: () -> Unit,
     onOpenEvening: () -> Unit,
     onOpenInsights: () -> Unit,
     viewModel: TodayViewModel = viewModel(factory = TodayViewModel.Factory)
@@ -194,29 +193,21 @@ fun TodayScreen(
                 }
                 Spacer(Modifier.height(14.dp))
                 Text(
-                    text = "Restorative Balance",
+                    text = "Today's Routine",
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "A healthy mix for a calmer, clearer mind.",
+                    text = "Cooldowns and restorative choices are managed in " +
+                        "Rhythmic Routine.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = SlateTextMuted
                 )
                 Spacer(Modifier.height(16.dp))
-                RestorativeRow(
-                    icon = Icons.Outlined.Book,
-                    label = "Reading",
-                    value = "${state.restorativeReadingMinutes} min",
-                    progress = 0.45f
-                )
-                Spacer(Modifier.height(12.dp))
-                RestorativeRow(
-                    icon = Icons.Outlined.Spa,
-                    label = "Meditation",
-                    value = "${state.restorativeMeditationCompleted} / ${state.restorativeMeditationTarget} session",
-                    progress = 0f
+                PrimaryPillButton(
+                    text = "Open Rhythmic Routine",
+                    onClick = onOpenRoutine
                 )
             }
         }
@@ -231,25 +222,6 @@ fun TodayScreen(
             containerColor = EssentialAccessAmber,
             onClick = onOpenInsights
         )
-
-        Spacer(Modifier.height(16.dp))
-
-        // Entry point to the cooldown restorative choice shell
-        CalmCard(containerColor = MaterialTheme.colorScheme.surface) {
-            Text(
-                text = "Cooldown restorative paths",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "Preview the meditation / reading choice shell (placeholder).",
-                style = MaterialTheme.typography.bodyMedium,
-                color = SlateTextMuted
-            )
-            Spacer(Modifier.height(16.dp))
-            PrimaryPillButton(text = "Open restorative choice", onClick = onOpenRestorativeChoice)
-        }
 
         Spacer(Modifier.height(16.dp))
 
@@ -337,41 +309,6 @@ private fun MorningCard(
                 text = "View insights",
                 onClick = onOpenInsights
             )
-        }
-    }
-}
-
-@Composable
-private fun RestorativeRow(
-    icon: ImageVector,
-    label: String,
-    value: String,
-    progress: Float
-) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        IconBadge(
-            icon = icon,
-            contentDescription = null,
-            containerColor = Color.White.copy(alpha = 0.6f),
-            diameter = 36.dp
-        )
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Row {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    text = value,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = SlateTextMuted
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            SoftProgressBar(progress = progress, height = 10.dp)
         }
     }
 }

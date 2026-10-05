@@ -36,10 +36,6 @@ class SettingsViewModel(
         viewModelScope.launch { preferencesStore.setSubtleHapticsEnabled(enabled) }
     }
 
-    fun setPairedIntegrationEnabled(enabled: Boolean) {
-        viewModelScope.launch { preferencesStore.setPairedIntegrationEnabled(enabled) }
-    }
-
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {

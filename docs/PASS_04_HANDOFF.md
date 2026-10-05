@@ -2,10 +2,12 @@
 
 Status: **Pass 04 is implemented and automated checks pass.** Physical validation
 was executed on the Redmi Note 13 Pro+ 5G; the results and partial rows are
-recorded in section 6. The narrow active-session foreground service is
+recorded in section 6. A fresh Routine-triggered CD4 Meditation acceptance now
+passes (section 12). The narrow active-session foreground service is
 **required and verified** by the 30-minute screen-off run. Routine and Reader
 v1.2 in-place upgrade trials are now recorded; the full cross-app qualification
-matrix remains incomplete. See
+matrix remains incomplete because Reader and Routine physical rows are still
+open. See
 `Rhythmic-Routine/docs/releases/SW-2026-004-CLOSEOUT.md` for the current
 ecosystem status.
 
@@ -255,9 +257,9 @@ deny-by-default confirmed on hardware.
 
 ## 9. Exact remaining Pass 05 work
 
-- Drive the Routine demo switcher manually for cooldowns #3–#6 to close the
-  partial rows of 44–46 (CD3 baseline view, CD4 Reader path, CD4 Meditation
-  intent launch) — engine, trust, and UI branches are otherwise proven.
+- The fresh Routine-bound CD4 Meditation trigger/completion is now verified on
+  device (section 12). The fresh CD3 Reader baseline and CD4 Reader path, plus
+  the separate Routine reboot-persistence row, remain physical acceptance work.
 - Optional UX improvement (37): surface the richer provider states
   (`not-installed / untrusted / incompatible / unavailable / available`) in the
   Meditation/Insights UI — the Kotlin layer already distinguishes them.
@@ -285,3 +287,96 @@ deny-by-default confirmed on hardware.
   close the remaining Routine gate-trigger and full matrix rows.
 - No release, store submission, or production promotion is authorized by this
   handoff.
+
+## 11. Meditation companion-integration follow-up — 2026-10-03
+
+- Removed the obsolete local restorative-choice prototype (including its
+  nonfunctional Reader button and hardcoded “Cooldown 4”). Meditation's Today
+  and restorative-completion surfaces now hand off to the installed Routine
+  launcher (production or QA package); cooldowns and provider choice remain
+  Routine-owned.
+- Removed the fabricated `38 / 90 min` completion countdown. A completed bound
+  Meditation session now states that the cooldown continues and offers a
+  Routine handoff for its live status. Settings no longer presents a local
+  pairing toggle that did not control the signature-verified IPC path.
+- Reader Daily Evidence V2 parsing now requires protocol version 2 and the
+  requested date key before accepting verified seconds/pages. The provider
+  projection remains restricted to protocol/date identity and aggregate values.
+- Added optional `rhythmicSharedDebugKeystore` Gradle configuration. The QA APK
+  was built with the existing shared ecosystem signer.
+- Verification: **177 / 177 JVM tests**, debug APK, Android-test APK, and lint
+  passed. On the Redmi, **6 / 6** recovery-intent instrumentation tests and
+  **3 / 3** companion integration tests passed: Routine launcher visibility and
+  read-only queries to the installed Routine attention-insight and Reader Daily
+  Evidence providers through Meditation's target app context.
+- The connected-test report/log shows that Android Gradle Plugin's test cleanup
+  explicitly ran `pm uninstall com.terinit.rhythmicmeditation` after those 9
+  tests. This removed the target package and its private app data; the earlier
+  statement that no uninstall occurred was incorrect. Meditation was reinstalled
+  with the shared signer, and its database was restored byte-for-byte from the
+  last saved post-launch archive at
+  `%LOCALAPPDATA%/Temp/opencode/sw-2026-004/meditation-post-launch-restore-check/`
+  (SHA-256 `b2f018a9eaa011f19c2b74263c471729721f6f443e39bdbfb08ac0d788a2f782`).
+  The restored Room v3 DB passes `PRAGMA integrity_check` and contains the
+  archived pending and completed Routine-bound rows plus their interval. At
+  that restore-check checkpoint, no newer Meditation database snapshot was
+  available; private data from that interval, including unarchived preferences,
+  could not be recovered. Later fresh-acceptance artifacts are separately
+  captured in section 12.
+- The device remained locked during that checkpoint, so no visible UI tap was
+  claimed. Fresh Routine-triggered CD4 Reader/Meditation acceptance and the
+  remaining Routine matrix rows were still separate work at that time; the
+  Meditation row was subsequently completed as recorded below.
+- The Sessions tab now starts a real standalone practice when requested and
+  renders the persisted terminal-session history. Routine/Reader Insights
+  projections refresh when the screen resumes, so returning from a sibling app
+  picks up its latest read-only evidence.
+
+## 12. Fresh Routine-bound CD4 Meditation acceptance — 2026-10-03
+
+- **Device:** Redmi Note 13 Pro+ 5G, Android 16 / API 36, ADB
+  `P7J7TGKNAY8DKJ5P`, local time `Africa/Johannesburg` (SAST). The device was
+  unlocked; no system update was accepted or installed.
+- **Production-path allocation:** Routine's visible QA control exhausted the
+  Videos allowance through its production exhaustion transition. At
+  `00:47:52.549 SAST`, native and JS state created ordinal 4 for Attention Day
+  `ad-20261002-0800`: gate
+  `gate-ad-20261002-0800-videos-o4`, requirement `restorative-choice`, and
+  cooldown end `1790986672549` (`02:17:52.549 SAST`). Before selection,
+  `cooldownsTriggered=4` and `meditationSubstitutionsUsed=0`.
+- **Normal Routine UI flow:** Touch Grass showed the Meditation/Reading choice,
+  2 of 2 Meditation paths remaining, and the separate active cooldown. The
+  on-screen `Begin Meditation` action selected Meditation and launched the
+  bound request. Routine persisted session
+  `9a359f71-22fc-4215-8904-5e332c3f791e` on the gate before launch.
+- **Meditation evidence:** Room v3 row has protocol 1, kind
+  `COOLDOWN_RESTORATIVE`, status `COMPLETED`, required/qualified
+  `1800/1800`, source gate
+  `gate-ad-20261002-0800-videos-o4`, and source Attention Day
+  `ad-20261002-0800`. The single interval is
+  `172242277 → 174042277` on the monotonic clock (**1,800,000 ms exactly**);
+  `interruptionCount=0`, `pauseCount=0`, and no interruption rows. Completion
+  was recorded at `01:23:02.133 SAST`; `PRAGMA integrity_check` returned `ok`.
+- **Routine reconciliation:** Returning through Meditation's `Open Rhythmic
+  Routine` handoff resumed Routine and queried the exact bound session. Native
+  and JS gate projections became `satisfied`; JS shows the same session ID,
+  `meditationSubstitutionConsumed=true`, and
+  `meditationSubstitutionsUsed=1` (from 0). `cooldownsTriggered` remains 4 and
+  Attention Day remains `ad-20261002-0800`. The cooldown end is unchanged at
+  `1790986672549` in the gate and active cooldown; Routine's screen states
+  “Restorative requirement complete · Cooldown remains active” and showed
+  52 minutes remaining.
+- **Evidence custody:** Snapshots, screen captures, and the 52-sample
+  read-only qualified-time log (51 ACTIVE samples, then COMPLETED at 1800 s;
+  no polling errors) are under
+  `C:\Users\Xcerpt\AppData\Local\Temp\opencode\meditation-session-20261003\`.
+  `acceptance-manifest.json` lists artifact hashes. The post-reconcile Routine,
+  Reader, and Meditation archives have SHA-256 values
+  `7df78d18703918e965bad84ef2a28348ac1d0d33a6398fe07e6cfd623f984a76`,
+  `cf3e943c1a2c32b5a4a456a44e05667febd294352bb262fb1481896836e6d754`, and
+  `a7092a74b21d5069ea47e8fb51eb1be621d0485f79864335c8d38bc06554d2b2`,
+  respectively. No connected-test cleanup, app-data clearing, or manual edit to
+  counters, gates, ordinals, timestamps, or evidence was used.
+- This closes the fresh Routine-bound CD4 Meditation acceptance only. Reader
+  acceptance and the remaining Routine matrix rows remain open; no merge,
+  release, store submission, or production promotion is authorized.

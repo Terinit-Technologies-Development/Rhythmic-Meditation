@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Instrumented integration checks query only the signature-protected,
+         read-only evidence projections used by Meditation Insights. -->
+    <uses-permission android:name="com.terinit.rhythmicmeditation.permission.STATUS_ACCESS" />
+    <uses-permission android:name="com.terinit.rhythmicreader.permission.RECOVERY" />
+</manifest>

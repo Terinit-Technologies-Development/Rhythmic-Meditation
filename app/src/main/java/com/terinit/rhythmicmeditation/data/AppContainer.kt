@@ -130,9 +130,9 @@ class AppContainer(context: Context) {
     )
 
     /**
-     * Routine's narrow evening signal. The trigger is Routine-owned; the
-     * default is the null-returning standalone implementation. Swap in the
-     * Routine-backed implementation when pairing lands.
+     * Routine's live, narrow evening signal. The trigger is Routine-owned;
+     * absent or unreadable Routine data resolves to no signal and leaves
+     * standalone Meditation behavior available.
      */
     val routineEveningSignal: RoutineEveningSignal =
         ContentResolverRoutineEveningSignal(context.applicationContext.contentResolver)

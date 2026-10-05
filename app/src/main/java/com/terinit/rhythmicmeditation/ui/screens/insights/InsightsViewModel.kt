@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -120,8 +121,9 @@ fun buildInsightsUiState(
 
 /**
  * State holder for the Insights screen. Local data is authoritative; the
- * Routine and Reader projections are read-only, one-shot, and fail-open —
- * they can only ever ADD context, never change policy or block meditation.
+ * Routine and Reader projections are read-only and fail-open — they can only
+ * ever ADD context, never change policy or block meditation. Projections are
+ * refreshed when Insights enters or resumes.
  */
 class InsightsViewModel(
     sessionRepository: MeditationSessionRepository,
@@ -132,11 +134,10 @@ class InsightsViewModel(
 ) : ViewModel() {
 
     private val projections = MutableStateFlow<InsightProjections?>(null)
+    private var refreshJob: Job? = null
 
     init {
-        viewModelScope.launch {
-            projections.value = withContext(Dispatchers.IO) { loadProjections() }
-        }
+        refreshProjections()
     }
 
     val uiState: StateFlow<InsightsUiState> = combine(
@@ -162,11 +163,18 @@ class InsightsViewModel(
         initialValue = InsightsUiState()
     )
 
-    /**
-     * One-shot read of the cross-app projections. A missing app, a denied
-     * provider, or a garbage row all read as "not connected" — partial UI,
-     * never an error.
-     */
+    /** Refreshes the cross-app projections without affecting local session state. */
+    fun refreshProjections() {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            projections.value = withContext(Dispatchers.IO) {
+                runCatching { loadProjections() }
+                    .getOrElse { InsightProjections(null, emptyList(), null) }
+            }
+        }
+    }
+
+    /** Missing apps, denied providers, and malformed rows resolve to partial data. */
     private fun loadProjections(): InsightProjections {
         val now = timeProvider.currentTimeMillis()
         val todayDateKey = MeditationInsights.dateKeyOf(now)

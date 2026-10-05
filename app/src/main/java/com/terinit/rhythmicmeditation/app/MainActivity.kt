@@ -11,6 +11,7 @@ import com.terinit.rhythmicmeditation.domain.model.MeditationSessionKind
 import com.terinit.rhythmicmeditation.domain.protocol.MeditationProtocol
 import com.terinit.rhythmicmeditation.integration.contract.RecoveryOutcome
 import com.terinit.rhythmicmeditation.integration.intent.MeditationIntents
+import com.terinit.rhythmicmeditation.integration.intent.RoutineAppLauncher
 import com.terinit.rhythmicmeditation.ui.navigation.AppRoute
 import com.terinit.rhythmicmeditation.ui.navigation.RhythmicMeditationRoot
 import com.terinit.rhythmicmeditation.ui.theme.RhythmicMeditationTheme
@@ -46,7 +47,8 @@ class MainActivity : ComponentActivity() {
             RhythmicMeditationTheme {
                 RhythmicMeditationRoot(
                     pendingRoute = pendingRouteState,
-                    onRouteConsumed = { pendingRoute.value = null }
+                    onRouteConsumed = { pendingRoute.value = null },
+                    onOpenRoutine = ::openRoutine
                 )
             }
         }
@@ -121,5 +123,27 @@ class MainActivity : ComponentActivity() {
             "Meditation request could not be accepted.",
             Toast.LENGTH_SHORT
         ).show()
+    }
+
+    /** Opens the policy-owning companion; Meditation never fabricates gates. */
+    private fun openRoutine() {
+        val launchIntent = RoutineAppLauncher.findLaunchIntent(packageManager)
+        if (launchIntent == null) {
+            Toast.makeText(
+                this,
+                "Rhythmic Routine is not installed.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        runCatching { startActivity(launchIntent) }
+            .onFailure {
+                Toast.makeText(
+                    this,
+                    "Rhythmic Routine could not be opened.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
     }
 }

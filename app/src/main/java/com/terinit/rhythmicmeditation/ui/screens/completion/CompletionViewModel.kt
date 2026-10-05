@@ -22,16 +22,13 @@ import kotlinx.coroutines.launch
 /**
  * UI state for the Completion screen.
  *
- * The completed session and its qualified minutes are REAL. Cooldown time
- * remains a placeholder: Rhythmic Routine owns cooldowns and supplies the
- * remaining time in Pass 3. Meditation never shortens a cooldown.
+ * The completed session and its qualified minutes are REAL. Cooldown time is
+ * owned by Rhythmic Routine; Meditation never invents or shortens it.
  */
 data class CompletionUiState(
     val completedSession: MeditationSession? = null,
     val qualifiedMinutes: Int = 0,
-    val isCooldownRestorative: Boolean = false,
-    val cooldownMinutesLeft: Int = 38,
-    val cooldownTotalMinutes: Int = 90
+    val isCooldownRestorative: Boolean = false
 )
 
 /**

@@ -31,12 +31,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
-    <!--
-        Package visibility, scoped to exactly the read-only insight providers this app
-        queries (Rhythmic Routine's attention-insight projection and Rhythmic Reader's
-        Daily Evidence). No broad <package> visibility.
-    -->
+    <!-- Narrow package visibility for the two Routine launch variants and the
+         read-only Routine/Reader content providers used by Insights. -->
     <queries>
+        <package android:name="com.terinit.rhythmicroutine" />
+        <package android:name="com.terinit.rhythmicroutine.qa" />
         <provider android:authorities="com.terinit.rhythmicroutine.attention-insight" />
         <provider android:authorities="com.terinit.rhythmicroutine.qa.attention-insight" />
         <provider android:authorities="com.terinit.rhythmicroutine.evening-signal" />
@@ -63,12 +62,8 @@
             </intent-filter>
         </activity>
 
-        <!--
-            IPC surface for Rhythmic Routine. Pass 1 ships the provider shell only;
-            query/insert semantics are completed in a later pass. Exported and
-            guarded by the signature permission plus caller verification
-            (see integration/contract/CallerVerifier).
-        -->
+        <!-- Read-only, per-session IPC surface for Rhythmic Routine. Exported
+             and guarded by both signature permission and caller verification. -->
         <provider
             android:name=".integration.provider.MeditationStatusProvider"
             android:authorities="com.terinit.rhythmicmeditation.status"

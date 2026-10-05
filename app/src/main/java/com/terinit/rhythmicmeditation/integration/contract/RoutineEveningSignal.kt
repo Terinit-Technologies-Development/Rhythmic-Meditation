@@ -14,12 +14,12 @@ data class EveningSignal(
 )
 
 /**
- * Narrow, signature-protected surface placeholder for Routine's evening
- * schedule. The trigger for the Evening Wind-Down is Routine-owned — this app
- * never builds a schedule engine and never infers "evening" from the clock.
+ * Narrow, signature-protected surface for Routine's evening schedule. The
+ * ContentResolver implementation reads Routine's live projection; the trigger
+ * remains Routine-owned, and this app never infers "evening" from the clock.
  *
- * Routine integration completes later; the evening state model works
- * standalone against [UnavailableRoutineEveningSignal].
+ * The evening state model also works standalone against
+ * [UnavailableRoutineEveningSignal].
  */
 interface RoutineEveningSignal {
 

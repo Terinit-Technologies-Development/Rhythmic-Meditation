@@ -9,8 +9,8 @@ import com.terinit.rhythmicmeditation.integration.contract.MeditationContractCod
  * Intent surface used by Rhythmic Routine to hand a meditation session to
  * this app (including after restart / process restore).
  *
- * Pass 1 ships parsing and validation; the activity-side handling of these
- * intents is completed in a later pass.
+ * MainActivity handles valid requests through RecoveryRequestHandler, verifies
+ * the caller, and routes the exact persisted session into the runtime.
  */
 object MeditationIntents {
 

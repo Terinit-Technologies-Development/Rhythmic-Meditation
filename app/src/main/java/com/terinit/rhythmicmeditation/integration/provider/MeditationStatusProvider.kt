@@ -51,8 +51,8 @@ internal fun meditationStatusCursor(status: MeditationRecoveryStatus?): MatrixCu
  * 2. [com.terinit.rhythmicmeditation.integration.contract.CallerVerifier]
  *    (deny-by-default package + signing-certificate verification).
  *
- * PASS 2 SHELL: read-only. Write semantics and richer queries land with the
- * full Routine integration (Pass 3).
+ * Read-only by design: Routine can query evidence for a specific session id;
+ * it cannot write or enumerate Meditation's private history.
  */
 class MeditationStatusProvider : ContentProvider() {
 

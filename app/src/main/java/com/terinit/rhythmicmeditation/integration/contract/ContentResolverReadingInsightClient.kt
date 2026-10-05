@@ -7,9 +7,10 @@ import android.net.Uri
  * [ReadingInsightClient] backed by the platform ContentResolver, reading
  * Reader's existing Daily Evidence V2 provider.
  *
- * Fail-open by contract: an absent Reader or malformed row yields null
- * ("Rhythmic Reader not connected"). Only the two evidence columns are ever
- * requested — no book titles, contents, or annotations cross the boundary.
+ * Fail-open by contract: an absent Reader, mismatched protocol/date, or
+ * malformed row yields null ("Rhythmic Reader not connected"). Only protocol/
+ * date identity and the two evidence values are requested — no book titles,
+ * contents, or annotations cross the boundary.
  */
 class ContentResolverReadingInsightClient(
     private val contentResolver: ContentResolver

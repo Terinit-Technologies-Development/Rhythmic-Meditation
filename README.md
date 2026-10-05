@@ -67,6 +67,9 @@ support, conservative recovery, and a fully dogfoodable Morning Meditation.
   (STILLNESS / BREATH / BODY / IMAGINATION — identical qualification).
 - **Completion UX** — real recorded minutes, kind-aware calm copy. Never
   reward/unlock language.
+- **Session history** — local terminal-session ledger with session kind, date,
+  qualified practice time, and interruption counts; the Sessions tab can also
+  begin a standalone 30-minute practice.
 - **Optional local cues** — synthesized start/complete bell + haptics, gated by
   DataStore preferences, never part of qualification. No network audio.
 - **IPC hardened and usable** — `RecoveryRequestHandler`
@@ -75,26 +78,32 @@ support, conservative recovery, and a fully dogfoodable Morning Meditation.
   `CallerVerifier` unchanged (no debug bypasses; tests inject fake verifiers).
 - **Checkpoint persistence** — `session_time_checkpoints` table (schema v2).
 
-### Foreground-service decision (documented, deferred)
+### Active-session foreground service
 
-Per spec, no foreground service was added up front. The runtime relies on
-derived timing + checkpoints, which survive process suspension correctly
-(suspension loses only the un-checkpointed tail). **Physical QA decides**: if
-screen-off meditation is killed too aggressively on real devices, add a tightly
-scoped active-session foreground service (ACTIVE → started; terminal → stopped,
-quiet ongoing notification, documented type/permission). No wake locks.
+A narrowly scoped foreground service runs only while a meditation session is
+ACTIVE. Physical QA found it necessary for long screen-off sessions; it carries
+no timing logic or wake lock. The runtime's monotonic intervals and persisted
+checkpoints remain the source of qualified time.
 
-### Not implemented (reserved for later passes)
+### Companion-app ownership and integration
 
-- Routine cooldown/restorative policy (Pass 3) — restorative/cooldown UI is
-  still placeholder copy
-- Routine-side implementations of the evening trigger and the attention/reading
-  insight projections (the narrow contract surfaces exist and degrade quietly to
-  "not connected"; the state model and insights work standalone)
-- Peer pairing configuration (trust policy returns "no peer configured" until
-  then, so external IPC callers are rejected — by design)
-- Foreground service (see above), session history list, data management
-- Physical-device QA results (see checklist below)
+- **Rhythmic Routine owns policy and enforcement.** Meditation launches Routine
+  from its Today screen for cooldowns/restorative choices; it does not duplicate
+  those choices or invent cooldown state locally.
+- Routine can start an exact, session-bound Meditation recovery request. The
+  request is validated, same-signer checked, persisted idempotently, and routed
+  into the session UI; Routine reads the matching session status projection.
+- Meditation consumes Routine's evening signal and attention-insight projection
+  plus Reader's Daily Evidence V2 projection. These optional Insights reads are
+  read-only and fail open; they never affect Meditation timing or Routine policy.
+- Shared debug signing is opt-in for local cross-app QA builds. The keystore is
+  supplied by a local Gradle property and is not stored in this repository.
+
+### Remaining scope
+
+- Local data-management controls.
+- Completion of the physical cross-app qualification matrix; the current handoff
+  records which Routine-triggered rows still need an unlocked-device run.
 
 ---
 
@@ -124,6 +133,9 @@ Requirements: JDK 17, Android SDK (platform 37, build-tools 36.x),
 # Build debug APK
 ./gradlew assembleDebug
 
+# Optional: share the QA debug signer with Routine/Reader for local IPC tests
+./gradlew -PrhythmicSharedDebugKeystore="C:/path/to/shared-debug.keystore" assembleDebug
+
 # JVM unit tests (engine, domain, protocol, timing, session semantics)
 ./gradlew test
 
@@ -149,6 +161,10 @@ Windows: use `gradlew.bat` instead of `./gradlew`.
   behavior. `android.suppressUnsupportedCompileSdk` silences the AGP
   recommendation warning.
 - Versions are pinned in `gradle/libs.versions.toml`.
+- The shared signer property is optional. If the keystore uses nonstandard
+  credentials, supply `rhythmicSharedDebugStorePassword`,
+  `rhythmicSharedDebugKeyAlias`, and `rhythmicSharedDebugKeyPassword` as local
+  Gradle properties or environment-backed project properties.
 - Room schema is **v3** (v2 added `session_time_checkpoints`, v3 adds
   `evening_meditation`); destructive fallback is configured until real
   migrations are needed.
@@ -262,10 +278,7 @@ real hardware before Pass 3 relies on the engine:
 
 ---
 
-## Pass 3 handoff — Routine integration & Restorative Gate
-
-**Branch / commit:** see `git log` — baseline `aebd142` (Pass 1) and the Pass 2
-commit on `main`; `git diff aebd142..HEAD` is the Pass 2 diff.
+## Routine integration & restorative sessions
 
 **Recovery entry point**
 
@@ -287,9 +300,9 @@ commit on `main`; `git diff aebd142..HEAD` is the Pass 2 diff.
 **Status surface**
 
 - Signature permission: `com.terinit.rhythmicmeditation.permission.STATUS_ACCESS`
-  (protectionLevel `signature`) + `CallerVerifier` on top (deny-by-default
-  package + SHA-256 signing-certificate digests; configure the peer via
-  `CallerTrustPolicy` — `AppContainer.callerTrustPolicy` is the wiring point)
+  (protectionLevel `signature`) + `CallerVerifier` on top. The configured
+  same-signer trust policy accepts Routine's production and QA package variants;
+  unknown callers and mismatched certificates are rejected.
 - ContentProvider authority: `com.terinit.rhythmicmeditation.status`, read-only
   query (session id via `selectionArgs[0]` or the URI path segment), columns:
   `sessionId`, `protocolVersion`, `status`, `requiredQualifiedSeconds`,
@@ -303,11 +316,11 @@ commit on `main`; `git diff aebd142..HEAD` is the Pass 2 diff.
 - Kind enum: `MORNING_REQUIRED, COOLDOWN_RESTORATIVE, EVENING_WIND_DOWN,
   STANDALONE` (`STANDALONE` is local-only and cannot arrive over the protocol)
 - Morning vs cooldown-restorative: identical qualification (1,800s). Morning is
-  locally keyed (`morning-<yyyy-MM-dd>` ids, `MorningSessionPolicy`); when
-  Routine is paired it should send the rhythmic day id and use
-  `COOLDOWN_RESTORATIVE` + `sourceCooldownId` for gate-bound sessions. Evidence
-  exposed to Routine: `MeditationRecoveryStatus` above. Cancelled sessions keep
-  history but never transfer credit.
+  locally keyed (`morning-<yyyy-MM-dd>` ids, `MorningSessionPolicy`). Routine
+  sends its Attention Day id and uses `COOLDOWN_RESTORATIVE` plus
+  `sourceCooldownId` for gate-bound sessions. Evidence exposed to Routine:
+  `MeditationRecoveryStatus` above. Cancelled sessions keep history but never
+  transfer credit.
 
 **Runtime behavior summary for Routine's gate logic**
 
@@ -320,23 +333,23 @@ commit on `main`; `git diff aebd142..HEAD` is the Pass 2 diff.
   `requiredQualifiedSeconds`, idempotent, `completedAtEpochMs` is wall clock
   (display only).
 
-**Tests:** `./gradlew test` → **91 unit tests, 0 failures**
-(61 Pass 1 tests remain green + 30 new: 23 `MeditationRuntimeControllerTest`,
-7 `RecoveryRequestHandlerTest`). Instrumentation (`./gradlew
-connectedAndroidTest`, requires a device): 17 tests across
-`MeditationDatabaseTest`, `MeditationIntentsTest`, `MorningFlowTest` —
-compiled and ready, not executed in this environment.
+**Current checks:** **177 JVM tests, 0 failures**; debug APK, Android-test APK,
+and lint pass. On the Redmi, 6 recovery-intent contract tests and 3 companion
+integration tests passed under the shared QA signer (launcher visibility plus
+the two read-only provider queries). The instrumented cross-app checks
+query the actual installed providers using Meditation's target context.
 
-**Physical-device results:** not run in this environment — execute the QA
-checklist above on hardware and record results before Pass 3 enforcement.
+**Physical-device results:** screen-off qualification, process-death recovery,
+provider security, and prior Routine-bound completion runs are recorded in
+[`docs/PASS_04_HANDOFF.md`](docs/PASS_04_HANDOFF.md). The remaining fresh
+Routine-triggered gate acceptance rows still require an unlocked-device run.
 
 **Known limitations**
 
-- Peer trust policy is unconfigured → all external IPC callers are rejected
-  until Pass 3 pairing (intentional).
 - `lastUpdatedAtEpochMs` is derived from known session timestamps (no separate
   update column).
-- Foreground service deferred pending physical QA (see above).
+- Local data-management controls are not yet exposed in Settings.
 - Calls/Essential Access are indistinguishable from plain interactive
-  backgrounding (Pass 3 provides context).
-- Rhythmic day id is local-date based; swap to Routine's real day id at pairing.
+  backgrounding.
+- Morning requirements use Meditation's local date key; Routine-bound recovery
+  sessions retain the Attention Day id supplied by Routine.
