@@ -66,12 +66,7 @@ object MeditationContractCodec {
             MeditationContractFields.KEY_LAST_UPDATED_AT_EPOCH_MS
         )
         return keys.associateWith { key ->
-            when {
-                !bundle.containsKey(key) -> null
-                else -> bundle.getString(key)
-                    ?: bundle.getLong(key, Long.MIN_VALUE).takeIf { it != Long.MIN_VALUE }
-                    ?: bundle.getInt(key, Int.MIN_VALUE).takeIf { it != Int.MIN_VALUE }
-            }
+            if (bundle.containsKey(key)) bundle.get(key) else null
         }
     }
 }

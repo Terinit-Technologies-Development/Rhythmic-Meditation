@@ -1,9 +1,12 @@
 package com.terinit.rhythmicmeditation.data.mapper
 
+import com.terinit.rhythmicmeditation.data.local.entity.EveningMeditationEntity
 import com.terinit.rhythmicmeditation.data.local.entity.MeditationInsightSnapshotEntity
 import com.terinit.rhythmicmeditation.data.local.entity.MeditationIntervalEntity
 import com.terinit.rhythmicmeditation.data.local.entity.MeditationSessionEntity
 import com.terinit.rhythmicmeditation.data.local.entity.SessionInterruptionEventEntity
+import com.terinit.rhythmicmeditation.domain.evening.EveningMeditationRecord
+import com.terinit.rhythmicmeditation.domain.evening.EveningMeditationState
 import com.terinit.rhythmicmeditation.domain.model.InterruptionType
 import com.terinit.rhythmicmeditation.domain.model.MeditationInsightSnapshot
 import com.terinit.rhythmicmeditation.domain.model.MeditationInterval
@@ -108,3 +111,21 @@ fun MeditationInsightSnapshot.toEntity(): MeditationInsightSnapshotEntity =
         restorativeMeditationCount = restorativeMeditationCount,
         createdAtEpochMs = createdAtEpochMs
     )
+
+fun EveningMeditationEntity.toDomain(): EveningMeditationRecord = EveningMeditationRecord(
+    attentionDayId = attentionDayId,
+    state = EveningMeditationState.fromWire(state) ?: EveningMeditationState.NOT_DUE,
+    dueAtEpochMs = dueAtEpochMs,
+    snoozedUntilEpochMs = snoozedUntilEpochMs,
+    sessionId = sessionId,
+    updatedAtEpochMs = updatedAtEpochMs
+)
+
+fun EveningMeditationRecord.toEntity(): EveningMeditationEntity = EveningMeditationEntity(
+    attentionDayId = attentionDayId,
+    state = state.name,
+    dueAtEpochMs = dueAtEpochMs,
+    snoozedUntilEpochMs = snoozedUntilEpochMs,
+    sessionId = sessionId,
+    updatedAtEpochMs = updatedAtEpochMs
+)

@@ -15,14 +15,39 @@ android {
         applicationId = "com.terinit.rhythmicmeditation"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Companion apps in the Rhythmic ecosystem can opt into the local shared
+    // signer for debug QA and direct internal release APKs. Configure it with
+    // -PrhythmicSharedDebugKeystore=<path>; without that property, keep using
+    // the machine's normal Android debug key. The keystore stays outside Git.
+    val sharedDebugKeystore = providers.gradleProperty("rhythmicSharedDebugKeystore").orNull
+    if (sharedDebugKeystore != null) {
+        signingConfigs.create("sharedQaDebug") {
+            storeFile = file(sharedDebugKeystore)
+            storePassword = providers.gradleProperty("rhythmicSharedDebugStorePassword")
+                .orElse("android").get()
+            keyAlias = providers.gradleProperty("rhythmicSharedDebugKeyAlias")
+                .orElse("androiddebugkey").get()
+            keyPassword = providers.gradleProperty("rhythmicSharedDebugKeyPassword")
+                .orElse("android").get()
+        }
+    }
+
     buildTypes {
+        debug {
+            if (sharedDebugKeystore != null) {
+                signingConfig = signingConfigs.getByName("sharedQaDebug")
+            }
+        }
         release {
+            if (sharedDebugKeystore != null) {
+                signingConfig = signingConfigs.getByName("sharedQaDebug")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

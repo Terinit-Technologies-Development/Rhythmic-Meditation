@@ -29,20 +29,50 @@ import kotlinx.coroutines.launch
  */
 class RhythmicMeditationApp : Application() {
 
-    lateinit var container: AppContainer
-        private set
+    /**
+     * Content providers can be queried before Application.onCreate() runs.
+     * Keep the container lazy so a cold-start status-provider request is safe;
+     * onCreate below still initializes it before registering process observers.
+     */
+    val container: AppContainer by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        AppContainer(this)
+    }
 
     override fun onCreate() {
         super.onCreate()
-        container = AppContainer(this)
+        container
 
         registerProcessLifecycleObserver()
         registerScreenReceiver()
+
+        // The narrow active-session foreground service exists ONLY while a
+        // qualifying session is ACTIVE (evidence-mandated: the platform killed
+        // the process mid-session during screen-off). Timing logic itself
+        // stays in the runtime — the service is keep-alive only.
+        container.applicationScope.launch {
+            container.runtimeController.state.collect { state ->
+                val active =
+                    state.session?.status == com.terinit.rhythmicmeditation.domain.model.MeditationSessionStatus.ACTIVE
+                if (active) {
+                    com.terinit.rhythmicmeditation.runtime.ActiveSessionForegroundService.start(
+                        this@RhythmicMeditationApp
+                    )
+                } else {
+                    com.terinit.rhythmicmeditation.runtime.ActiveSessionForegroundService.stop(
+                        this@RhythmicMeditationApp
+                    )
+                }
+            }
+        }
 
         // Sessions left ACTIVE by a previous process are restored
         // conservatively: only checkpointed time survives.
         container.applicationScope.launch {
             container.runtimeController.initializeAfterProcessStart()
+            // Routine owns the Evening Wind-Down trigger: sync the narrow
+            // evening projection on process start (fail-safe — an absent or
+            // unreadable Routine simply means "not due").
+            container.eveningMeditationController.syncFromSignal()
         }
     }
 

@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,29 +37,45 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.terinit.rhythmicmeditation.domain.evening.EveningMeditationState
+import com.terinit.rhythmicmeditation.domain.session.MorningStatus
 import com.terinit.rhythmicmeditation.ui.components.CalmCard
 import com.terinit.rhythmicmeditation.ui.components.IconBadge
 import com.terinit.rhythmicmeditation.ui.theme.MeditationGreen
 import com.terinit.rhythmicmeditation.ui.theme.MeditationGreenSoft
 import com.terinit.rhythmicmeditation.ui.theme.MistBlue
 import com.terinit.rhythmicmeditation.ui.theme.SlateTextMuted
+import com.terinit.rhythmicmeditation.util.TimeFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
- * Insights screen shell.
+ * Insights — truthful, descriptive, local-first.
  *
- * PLACEHOLDER CONTENT (Pass 1): all metrics are illustrative demo values.
- * Real insight computation is a later pass; this screen defines the layout
- * structure that computation will populate.
+ * Every number comes from the real session ledger or a read-only cross-app
+ * projection (rendered as "not connected" when unavailable). No scores, no
+ * streaks: a missed day is never framed as a failure.
  */
 @Composable
 fun InsightsScreen(
     viewModel: InsightsViewModel = viewModel(factory = InsightsViewModel.Factory)
 ) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshProjections()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val todayIndex = state.weekDateKeys.indexOf(state.todayDateKey)
 
     Column(
         modifier = Modifier
@@ -80,7 +97,7 @@ fun InsightsScreen(
             modifier = Modifier.padding(top = 6.dp)
         )
         Text(
-            text = "Your attention is deepening and\nyour balance is taking root.",
+            text = "A simple record of your practice.",
             style = MaterialTheme.typography.bodyLarge,
             color = SlateTextMuted,
             modifier = Modifier.padding(top = 12.dp)
@@ -128,7 +145,12 @@ fun InsightsScreen(
                     )
                 }
                 Text(
-                    text = "A calmer, clearer you today.",
+                    text = state.morningStatus.toMorningCopy(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = SlateTextMuted
+                )
+                Text(
+                    text = state.eveningStatus.toEveningCopy(),
                     style = MaterialTheme.typography.bodyMedium,
                     color = SlateTextMuted
                 )
@@ -163,18 +185,18 @@ fun InsightsScreen(
                 Spacer(Modifier.height(14.dp))
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
-                        text = "${state.weeklySessionsCompleted}",
+                        text = "${state.daysWithCompletedMeditation}",
                         style = MaterialTheme.typography.displayMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = " of ${state.weeklySessionsTarget}",
+                        text = " of 7",
                         style = MaterialTheme.typography.titleLarge,
                         color = SlateTextMuted
                     )
                 }
                 Text(
-                    text = "You're building a steady rhythm.",
+                    text = "Days with a completed meditation.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = SlateTextMuted
                 )
@@ -183,7 +205,6 @@ fun InsightsScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // Weekly minutes bar chart placeholder
         CalmCard(containerColor = Color.White.copy(alpha = 0.55f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -204,77 +225,57 @@ fun InsightsScreen(
                 )
             }
             Spacer(Modifier.height(18.dp))
-            WeeklyBars(minutes = state.weeklyMinutes)
+            WeeklyBars(minutes = state.weeklyMinutes, todayIndex = todayIndex)
         }
 
         Spacer(Modifier.height(16.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            CalmCard(
-                modifier = Modifier.weight(1f),
-                containerColor = MeditationGreenSoft.copy(alpha = 0.5f),
-                contentPadding = 16.dp
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconBadge(
-                        icon = Icons.Outlined.Spa,
-                        contentDescription = null,
-                        containerColor = Color.White.copy(alpha = 0.6f),
-                        diameter = 42.dp
-                    )
-                    Spacer(Modifier.width(10.dp))
+            if (state.routineConnected) {
+                CalmCard(
+                    modifier = Modifier.weight(1f),
+                    containerColor = MeditationGreenSoft.copy(alpha = 0.5f),
+                    contentPadding = 16.dp
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBadge(
+                            icon = Icons.Outlined.Spa,
+                            contentDescription = null,
+                            containerColor = Color.White.copy(alpha = 0.6f),
+                            diameter = 42.dp
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = "Restorative\nGates",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            text = "${state.gatesSatisfiedToday}",
+                            style = MaterialTheme.typography.displayMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = " of ${state.gatesCreatedToday}",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = SlateTextMuted
+                        )
+                    }
                     Text(
-                        text = "Restorative Gates",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Icon(
-                        imageVector = Icons.Outlined.ChevronRight,
-                        contentDescription = null,
-                        tint = SlateTextMuted
-                    )
-                }
-                Spacer(Modifier.height(14.dp))
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(
-                        text = "${state.restorativeGatesCompleted}",
-                        style = MaterialTheme.typography.displayMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = " of ${state.restorativeGatesTarget}",
-                        style = MaterialTheme.typography.titleLarge,
+                        text = "Gates satisfied this Attention Day.",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = SlateTextMuted
                     )
-                }
-                Text(
-                    text = "Elements completed this week.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = SlateTextMuted
-                )
-                Spacer(Modifier.height(14.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    repeat(state.restorativeGatesTarget) { index ->
-                        val done = index < state.restorativeGatesCompleted
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .background(
-                                    if (done) MeditationGreen.copy(alpha = 0.35f)
-                                    else Color.White.copy(alpha = 0.5f),
-                                    CircleShape
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Spa,
-                                contentDescription = null,
-                                tint = if (done) MeditationGreen else SlateTextMuted,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = "This week · ${state.gatesSatisfiedWeek} satisfied",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SlateTextMuted
+                    )
                 }
             }
 
@@ -298,69 +299,112 @@ fun InsightsScreen(
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f)
                     )
-                    Icon(
-                        imageVector = Icons.Outlined.ChevronRight,
-                        contentDescription = null,
-                        tint = SlateTextMuted
-                    )
                 }
                 Spacer(Modifier.height(14.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    DonutChart(
-                        meditationShare = state.meditationShare,
-                        modifier = Modifier.size(110.dp)
-                    )
-                    Spacer(Modifier.width(14.dp))
-                    Column {
-                        LegendRow(
-                            color = MeditationGreen,
-                            label = "Meditation",
-                            value = "${state.meditationMinutes} min",
-                            share = "${(state.meditationShare * 100).toInt()}%"
+                if (state.readerConnected) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        DonutChart(
+                            meditationShare = state.meditationShare,
+                            totalLabel = TimeFormat.humanMinutes(state.totalMinutes * 60),
+                            modifier = Modifier.size(110.dp)
                         )
-                        Spacer(Modifier.height(10.dp))
-                        LegendRow(
-                            color = MistBlue,
-                            label = "Reading",
-                            value = "${state.readingMinutes} min",
-                            share = "${(100 - (state.meditationShare * 100).toInt())}%"
-                        )
+                        Spacer(Modifier.width(14.dp))
+                        Column {
+                            LegendRow(
+                                color = MeditationGreen,
+                                label = "Meditation",
+                                value = "${state.todayMeditationMinutes} min",
+                                share = "${(state.meditationShare * 100).toInt()}%"
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            LegendRow(
+                                color = MistBlue,
+                                label = "Reading",
+                                value = "${state.readingMinutes} min",
+                                share = "${(100 - (state.meditationShare * 100).toInt())}%"
+                            )
+                        }
                     }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = "Deliberate outward attention (reading) and " +
+                            "deliberate inward attention (meditation).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SlateTextMuted
+                    )
+                } else {
+                    Text(
+                        text = "Rhythmic Reader not connected",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = SlateTextMuted
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "Meditation · ${state.todayMeditationMinutes} min today. " +
+                            "Reading evidence appears here when Rhythmic Reader is connected.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SlateTextMuted
+                    )
                 }
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
-        // A closer look
-        CalmCard(containerColor = MeditationGreenSoft.copy(alpha = 0.4f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconBadge(
-                    icon = Icons.Outlined.WbSunny,
-                    contentDescription = null,
-                    containerColor = Color.White.copy(alpha = 0.6f),
-                    diameter = 42.dp
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    text = "A Closer Look",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = SlateTextMuted
-                )
-            }
-            Spacer(Modifier.height(12.dp))
+        // Substitution display comes ONLY from Routine's projection — never
+        // inferred from local session history.
+        CalmCard(containerColor = Color.White.copy(alpha = 0.55f)) {
             Text(
-                text = "Your attention is steadier when the day begins in stillness.",
-                style = MaterialTheme.typography.headlineSmall,
+                text = "Restorative Choices",
+                style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
-                text = "You're more present, make clearer choices, and feel calmer " +
-                    "throughout the day.",
+                text = if (state.routineConnected) {
+                    "Meditation restorative choices · ${state.substitutionChoicesRemaining} of 2 remaining"
+                } else {
+                    "Rhythmic Routine not connected"
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = SlateTextMuted
             )
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        val observation = state.observation
+        if (observation != null) {
+            // A closer look — only shown at the conservative >= 3 / >= 3 sample.
+            CalmCard(containerColor = MeditationGreenSoft.copy(alpha = 0.4f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconBadge(
+                        icon = Icons.Outlined.WbSunny,
+                        contentDescription = null,
+                        containerColor = Color.White.copy(alpha = 0.6f),
+                        diameter = 42.dp
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = "A Closer Look",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = SlateTextMuted
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = observation,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "An observation from your own record — not a rule, " +
+                        "and not a measure of a good or bad day.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = SlateTextMuted
+                )
+            }
         }
 
         Spacer(Modifier.height(24.dp))
@@ -368,7 +412,7 @@ fun InsightsScreen(
 }
 
 @Composable
-private fun WeeklyBars(minutes: List<Int>) {
+private fun WeeklyBars(minutes: List<Int>, todayIndex: Int) {
     val days = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
     val max = (minutes.maxOrNull() ?: 1).coerceAtLeast(1)
     Row(
@@ -384,7 +428,7 @@ private fun WeeklyBars(minutes: List<Int>) {
                 verticalArrangement = Arrangement.Bottom,
                 modifier = Modifier.weight(1f)
             ) {
-                val isToday = index == 1 // placeholder: Tue highlighted like the mockup
+                val isToday = index == todayIndex
                 Box(
                     modifier = Modifier
                         .width(26.dp)
@@ -408,7 +452,11 @@ private fun WeeklyBars(minutes: List<Int>) {
 }
 
 @Composable
-private fun DonutChart(meditationShare: Float, modifier: Modifier = Modifier) {
+private fun DonutChart(
+    meditationShare: Float,
+    totalLabel: String,
+    modifier: Modifier = Modifier
+) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val stroke = Stroke(width = 26.dp.toPx(), cap = StrokeCap.Butt)
@@ -437,7 +485,7 @@ private fun DonutChart(meditationShare: Float, modifier: Modifier = Modifier) {
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = "2h 40m",
+                text = totalLabel,
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -464,4 +512,20 @@ private fun LegendRow(color: Color, label: String, value: String, share: String)
             Text("$value · $share", style = MaterialTheme.typography.bodySmall, color = SlateTextMuted)
         }
     }
+}
+
+private fun MorningStatus.toMorningCopy(): String = when (this) {
+    MorningStatus.REQUIRED -> "Morning meditation available"
+    MorningStatus.IN_PROGRESS -> "Morning meditation in progress"
+    MorningStatus.PAUSED -> "Morning meditation paused"
+    MorningStatus.COMPLETE -> "Morning meditation complete"
+}
+
+private fun EveningMeditationState.toEveningCopy(): String = when (this) {
+    EveningMeditationState.NOT_DUE -> "Evening practice not due yet"
+    EveningMeditationState.DUE -> "Evening practice available"
+    EveningMeditationState.SNOOZED -> "Evening practice snoozed"
+    EveningMeditationState.IN_PROGRESS -> "Evening practice in progress"
+    EveningMeditationState.COMPLETED -> "Evening practice complete"
+    EveningMeditationState.DEFERRED -> "Evening practice deferred"
 }

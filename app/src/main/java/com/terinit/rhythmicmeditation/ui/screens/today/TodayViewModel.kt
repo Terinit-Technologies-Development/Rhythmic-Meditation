@@ -24,15 +24,12 @@ import kotlinx.coroutines.launch
  *
  * The morning requirement is REAL local state (Pass 2 dogfood): REQUIRED until
  * today's morning meditation runs, COMPLETE once it has. Cooldown/restorative
- * numbers remain placeholders until Routine supplies policy in Pass 3.
+ * policy is owned by Routine and is not duplicated in Meditation's local state.
  */
 data class TodayUiState(
     val morningStatus: MorningStatus = MorningStatus.REQUIRED,
     val currentSession: MeditationSession? = null,
-    val preferences: AppPreferences = AppPreferences(),
-    val restorativeReadingMinutes: Int = 20,
-    val restorativeMeditationCompleted: Int = 0,
-    val restorativeMeditationTarget: Int = 1
+    val preferences: AppPreferences = AppPreferences()
 )
 
 /**

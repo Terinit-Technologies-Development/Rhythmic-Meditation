@@ -14,7 +14,6 @@ sealed class AppRoute(val route: String) {
     data object Evening : AppRoute("evening")
     data object Insights : AppRoute("insights")
     data object Settings : AppRoute("settings")
-    data object RestorativeChoice : AppRoute("restorative_choice")
 
     companion object {
         /** Routes that keep the bottom navigation bar visible. */

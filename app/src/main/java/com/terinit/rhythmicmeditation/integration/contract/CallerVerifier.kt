@@ -1,8 +1,8 @@
 package com.terinit.rhythmicmeditation.integration.contract
 
 /**
- * Supplies the identity of the trusted peer (Rhythmic Routine) for caller
- * verification. Backed by app preferences once pairing is configured.
+ * Supplies the identity of trusted Routine package variants and their
+ * same-signer certificate digests.
  */
 interface CallerTrustPolicy {
     /** Expected calling package name, or null when no peer is configured. */
@@ -10,15 +10,22 @@ interface CallerTrustPolicy {
 
     /** Expected signing certificate digests of the peer (empty until configured). */
     fun expectedSigningCertificateDigests(): Set<String>
+
+    /**
+     * Package-level acceptance. Defaults to the single expected package;
+     * multi-companion policies (e.g. [SameSignerCallerTrustPolicy]) override
+     * this while keeping signature verification mandatory.
+     */
+    fun isAcceptedPackage(packageName: String?): Boolean =
+        packageName != null && packageName == expectedPackageName()
 }
 
 /**
  * Verifies that IPC callers are the genuine, same-signature companion app.
  *
- * Deny-by-default: an unconfigured peer rejects every caller. Signature
- * comparison is a placeholder hook — the digest source (PackageManager
- * signing info) is supplied by the caller of [verifyCaller], so this class
- * stays unit-testable without the Android framework.
+ * Deny-by-default: missing or mismatched package/signature evidence rejects
+ * the caller. Signing digests are supplied by the Android boundary so this
+ * class stays unit-testable without the framework.
  */
 class CallerVerifier(private val trustPolicy: CallerTrustPolicy) {
 
@@ -26,16 +33,12 @@ class CallerVerifier(private val trustPolicy: CallerTrustPolicy) {
         callingPackage: String?,
         callingSigningCertificateDigests: Set<String>
     ): Result<Unit> {
-        val expectedPackage = trustPolicy.expectedPackageName()
-            ?: return Result.failure(
-                SecurityException("No paired peer configured; rejecting caller")
-            )
-        if (callingPackage.isNullOrBlank()) {
-            return Result.failure(SecurityException("Caller package is unknown"))
-        }
-        if (callingPackage != expectedPackage) {
+        if (!trustPolicy.isAcceptedPackage(callingPackage)) {
             return Result.failure(
-                SecurityException("Caller '$callingPackage' is not the paired peer")
+                SecurityException(
+                    if (callingPackage.isNullOrBlank()) "Caller package is unknown"
+                    else "Caller '$callingPackage' is not a paired peer"
+                )
             )
         }
         val expectedDigests = trustPolicy.expectedSigningCertificateDigests()

@@ -38,7 +38,6 @@ import com.terinit.rhythmicmeditation.ui.components.CalmCard
 import com.terinit.rhythmicmeditation.ui.components.IconBadge
 import com.terinit.rhythmicmeditation.ui.components.PrimaryPillButton
 import com.terinit.rhythmicmeditation.ui.components.SecondaryPillButton
-import com.terinit.rhythmicmeditation.ui.components.SoftProgressBar
 import com.terinit.rhythmicmeditation.ui.theme.MeditationGreen
 import com.terinit.rhythmicmeditation.ui.theme.MeditationGreenSoft
 import com.terinit.rhythmicmeditation.ui.theme.MistBlueSurface
@@ -56,6 +55,7 @@ import com.terinit.rhythmicmeditation.ui.theme.SlateTextMuted
 fun CompletionScreen(
     onReturnToToday: () -> Unit,
     onViewInsights: () -> Unit,
+    onOpenRoutine: () -> Unit,
     viewModel: CompletionViewModel = viewModel(factory = CompletionViewModel.Factory)
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -161,7 +161,7 @@ fun CompletionScreen(
         Spacer(Modifier.height(16.dp))
 
         if (state.isCooldownRestorative) {
-            // Cooldown card — placeholder numbers until Routine supplies them
+            // Cooldown is Routine-owned; do not display a locally fabricated timer.
             CalmCard(containerColor = MistBlueSurface) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconBadge(
@@ -173,38 +173,29 @@ fun CompletionScreen(
                     Spacer(Modifier.width(16.dp))
                     Column {
                         Text(
-                            text = "Cooldown",
+                            text = "Cooldown continues",
                             style = MaterialTheme.typography.titleLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "${state.cooldownMinutesLeft} min left",
-                            style = MaterialTheme.typography.headlineMedium,
+                            text = "Managed by Rhythmic Routine",
+                            style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.secondary
                         )
                     }
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "Meditation does not shorten the cooldown.\n" +
-                        "Rhythmic Routine will continue to manage your remaining time.",
+                    text = "Meditation satisfies this bound restorative session but " +
+                        "does not shorten the cooldown. Check Routine for its current status.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = SlateTextMuted
                 )
                 Spacer(Modifier.height(14.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    SoftProgressBar(
-                        progress = 1f - (state.cooldownMinutesLeft.toFloat() /
-                            state.cooldownTotalMinutes.toFloat()).coerceIn(0f, 1f),
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        text = "${state.cooldownMinutesLeft} min remaining",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = SlateTextMuted
-                    )
-                }
+                SecondaryPillButton(
+                    text = "Open Rhythmic Routine",
+                    onClick = onOpenRoutine
+                )
             }
         } else {
             CalmCard(containerColor = MistBlueSurface) {
@@ -225,8 +216,8 @@ fun CompletionScreen(
                 Spacer(Modifier.height(12.dp))
                 Text(
                     text = "Meditation does not buy screen time and does not shorten " +
-                        "cooldowns. Once Rhythmic Routine is paired, it remains the policy " +
-                        "authority and continues to manage phone availability.",
+                        "cooldowns. Rhythmic Routine remains the policy authority and " +
+                        "continues to manage phone availability.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = SlateTextMuted
                 )

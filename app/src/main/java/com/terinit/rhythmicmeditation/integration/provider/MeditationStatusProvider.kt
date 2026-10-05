@@ -7,7 +7,36 @@ import android.database.MatrixCursor
 import android.net.Uri
 import com.terinit.rhythmicmeditation.app.RhythmicMeditationApp
 import com.terinit.rhythmicmeditation.domain.protocol.MeditationProtocol
+import com.terinit.rhythmicmeditation.domain.protocol.MeditationRecoveryStatus
 import kotlinx.coroutines.runBlocking
+
+/** Keeps the V1 schema discoverable even when a requested session is missing. */
+internal fun meditationStatusCursor(status: MeditationRecoveryStatus?): MatrixCursor {
+    val columns = arrayOf(
+        MeditationProtocol.StatusColumns.SESSION_ID,
+        MeditationProtocol.StatusColumns.PROTOCOL_VERSION,
+        MeditationProtocol.StatusColumns.STATUS,
+        MeditationProtocol.StatusColumns.REQUIRED_QUALIFIED_SECONDS,
+        MeditationProtocol.StatusColumns.COMPLETED_QUALIFIED_SECONDS,
+        MeditationProtocol.StatusColumns.COMPLETED_AT_EPOCH_MS,
+        MeditationProtocol.StatusColumns.LAST_UPDATED_AT_EPOCH_MS
+    )
+    return MatrixCursor(columns).apply {
+        if (status != null) {
+            addRow(
+                arrayOf<Any?>(
+                    status.sessionId,
+                    status.protocolVersion,
+                    status.status,
+                    status.requiredQualifiedSeconds,
+                    status.completedQualifiedSeconds,
+                    status.completedAtEpochMs,
+                    status.lastUpdatedAtEpochMs
+                )
+            )
+        }
+    }
+}
 
 /**
  * Status provider for Rhythmic Routine (authority
@@ -22,8 +51,8 @@ import kotlinx.coroutines.runBlocking
  * 2. [com.terinit.rhythmicmeditation.integration.contract.CallerVerifier]
  *    (deny-by-default package + signing-certificate verification).
  *
- * PASS 2 SHELL: read-only. Write semantics and richer queries land with the
- * full Routine integration (Pass 3).
+ * Read-only by design: Routine can query evidence for a specific session id;
+ * it cannot write or enumerate Meditation's private history.
  */
 class MeditationStatusProvider : ContentProvider() {
 
@@ -51,30 +80,12 @@ class MeditationStatusProvider : ContentProvider() {
 
         val status = runBlocking {
             container.meditationStatusRepository.getSessionStatus(sessionId)
-        } ?: return null
+        }
 
-        val columns = arrayOf(
-            MeditationProtocol.StatusColumns.SESSION_ID,
-            MeditationProtocol.StatusColumns.PROTOCOL_VERSION,
-            MeditationProtocol.StatusColumns.STATUS,
-            MeditationProtocol.StatusColumns.REQUIRED_QUALIFIED_SECONDS,
-            MeditationProtocol.StatusColumns.COMPLETED_QUALIFIED_SECONDS,
-            MeditationProtocol.StatusColumns.COMPLETED_AT_EPOCH_MS,
-            MeditationProtocol.StatusColumns.LAST_UPDATED_AT_EPOCH_MS
-        )
-        val cursor = MatrixCursor(columns)
-        cursor.addRow(
-            arrayOf<Any?>(
-                status.sessionId,
-                status.protocolVersion,
-                status.status,
-                status.requiredQualifiedSeconds,
-                status.completedQualifiedSeconds,
-                status.completedAtEpochMs,
-                status.lastUpdatedAtEpochMs
-            )
-        )
-        return cursor
+        // The unknown-id probe uses this empty cursor to discover protocol V1.
+        // A null cursor means the provider itself is unavailable or rejected
+        // the caller, so do not conflate a missing session with that condition.
+        return meditationStatusCursor(status)
     }
 
     override fun getType(uri: Uri): String =

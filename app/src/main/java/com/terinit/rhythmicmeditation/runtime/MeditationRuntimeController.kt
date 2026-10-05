@@ -194,14 +194,49 @@ class MeditationRuntimeController(
         }
     }
 
-    /** Starts a session with an explicit kind (restorative, evening, free). */
+    /**
+     * Starts a session with an explicit kind (restorative, evening, free).
+     *
+     * When [sessionId] is supplied the start is idempotent per id: a live
+     * session is re-adopted (or started when still PENDING) instead of
+     * creating a duplicate, and a COMPLETED session is returned unchanged. A
+     * terminal CANCELLED/EXPIRED/INVALID session is never revived — callers
+     * pass a fresh id for a new attempt.
+     */
     suspend fun startSession(
         kind: MeditationSessionKind,
         requiredSeconds: Int = MORNING_REQUIRED_SECONDS,
-        rhythmicDayId: String? = null
+        rhythmicDayId: String? = null,
+        sessionId: String? = null
     ): Result<MeditationSession> = mutex.withLock {
+        val id = sessionId ?: com.terinit.rhythmicmeditation.util.Ids.newSessionId()
+        val existing = sessionRepository.getSession(id)
+        if (existing != null) {
+            return@withLock when (existing.status) {
+                MeditationSessionStatus.PENDING -> {
+                    val started = sessionService.startSession(id)
+                        .getOrElse { return@withLock Result.failure(it) }
+                    adoptSession(started.sessionId)
+                    // A fresh session supersedes any previous recovery notice.
+                    _state.value = _state.value.copy(recoveryNotice = null)
+                    ensureTicker()
+                    Result.success(started)
+                }
+                MeditationSessionStatus.ACTIVE,
+                MeditationSessionStatus.PAUSED,
+                MeditationSessionStatus.COMPLETED -> {
+                    adoptSession(id)
+                    Result.success(existing)
+                }
+                else -> Result.failure(
+                    IllegalStateException(
+                        "Session '$id' is ${existing.status}; a fresh session id is required"
+                    )
+                )
+            }
+        }
         createAndStart(
-            sessionId = com.terinit.rhythmicmeditation.util.Ids.newSessionId(),
+            sessionId = id,
             kind = kind,
             requiredSeconds = requiredSeconds,
             rhythmicDayId = rhythmicDayId

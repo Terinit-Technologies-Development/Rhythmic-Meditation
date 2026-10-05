@@ -1,5 +1,7 @@
 package com.terinit.rhythmicmeditation.util
 
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 /**
@@ -36,4 +38,8 @@ object TimeFormat {
 
     /** Whole minutes from seconds, rounded down (insight display). */
     fun wholeMinutes(totalSeconds: Int): Int = (totalSeconds.coerceAtLeast(0)) / 60
+
+    /** "9:15 PM" style clock time for snooze/deferral copy (display only). */
+    fun timeOfDay(epochMs: Long): String =
+        SimpleDateFormat("h:mm a", Locale.US).format(Date(epochMs))
 }

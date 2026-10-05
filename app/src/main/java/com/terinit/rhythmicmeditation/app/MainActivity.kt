@@ -7,9 +7,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
+import com.terinit.rhythmicmeditation.domain.model.MeditationSessionKind
 import com.terinit.rhythmicmeditation.domain.protocol.MeditationProtocol
 import com.terinit.rhythmicmeditation.integration.contract.RecoveryOutcome
 import com.terinit.rhythmicmeditation.integration.intent.MeditationIntents
+import com.terinit.rhythmicmeditation.integration.intent.RoutineAppLauncher
 import com.terinit.rhythmicmeditation.ui.navigation.AppRoute
 import com.terinit.rhythmicmeditation.ui.navigation.RhythmicMeditationRoot
 import com.terinit.rhythmicmeditation.ui.theme.RhythmicMeditationTheme
@@ -28,6 +30,7 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     private val pendingRoute = MutableStateFlow<String?>(null)
+    private val pendingRouteState = pendingRoute.asStateFlow()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,8 +46,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             RhythmicMeditationTheme {
                 RhythmicMeditationRoot(
-                    pendingRoute = pendingRoute.asStateFlow(),
-                    onRouteConsumed = { pendingRoute.value = null }
+                    pendingRoute = pendingRouteState,
+                    onRouteConsumed = { pendingRoute.value = null },
+                    onOpenRoutine = ::openRoutine
                 )
             }
         }
@@ -80,10 +84,31 @@ class MainActivity : ComponentActivity() {
                 .onSuccess { outcome ->
                     when (outcome) {
                         is RecoveryOutcome.RouteToSession -> {
-                            pendingRoute.value = if (outcome.alreadyCompleted) {
-                                AppRoute.Completion.route
-                            } else {
-                                AppRoute.ActiveSession.route
+                            if (outcome.alreadyCompleted) {
+                                pendingRoute.value = AppRoute.Completion.route
+                                return@onSuccess
+                            }
+
+                            val kind = MeditationSessionKind.fromWire(request.sessionKind)
+                            if (kind == null) {
+                                showRejection()
+                                return@onSuccess
+                            }
+
+                            // RecoveryRequestHandler persists the bound request
+                            // idempotently. Adopt/start that exact session in
+                            // the runtime before routing so the screen timer and
+                            // evidence provider use the same session id and
+                            // required duration.
+                            container.runtimeController.startSession(
+                                kind = kind,
+                                requiredSeconds = request.requiredQualifiedSeconds,
+                                rhythmicDayId = request.sourceRhythmicDayId,
+                                sessionId = request.sessionId
+                            ).onSuccess {
+                                pendingRoute.value = AppRoute.ActiveSession.route
+                            }.onFailure {
+                                showRejection()
                             }
                         }
                     }
@@ -98,5 +123,27 @@ class MainActivity : ComponentActivity() {
             "Meditation request could not be accepted.",
             Toast.LENGTH_SHORT
         ).show()
+    }
+
+    /** Opens the policy-owning companion; Meditation never fabricates gates. */
+    private fun openRoutine() {
+        val launchIntent = RoutineAppLauncher.findLaunchIntent(packageManager)
+        if (launchIntent == null) {
+            Toast.makeText(
+                this,
+                "Rhythmic Routine is not installed.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        runCatching { startActivity(launchIntent) }
+            .onFailure {
+                Toast.makeText(
+                    this,
+                    "Rhythmic Routine could not be opened.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
     }
 }

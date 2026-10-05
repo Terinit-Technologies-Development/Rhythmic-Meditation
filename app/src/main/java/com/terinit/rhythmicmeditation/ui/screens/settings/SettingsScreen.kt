@@ -40,10 +40,9 @@ import com.terinit.rhythmicmeditation.ui.theme.SoftDivider
 /**
  * Settings shell.
  *
- * Real local toggles (sound / haptics / integration switch) are persisted via
- * DataStore. The protocol status block is a placeholder until Routine pairing
- * is completed in a later pass. Local data controls are placeholders — the
- * destructive actions land with the data-management pass.
+ * Local sound/haptic preferences are persisted via DataStore. Cross-app access
+ * is controlled by the signature-verified Routine contract, not a local toggle.
+ * Local data controls are reserved for the data-management pass.
  */
 @Composable
 fun SettingsScreen(
@@ -99,7 +98,7 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // Integration / protocol status placeholder
+        // Integration contract: policy remains owned by Routine.
         CalmCard(containerColor = Color.White.copy(alpha = 0.55f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconBadge(
@@ -116,7 +115,7 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Protocol status (placeholder)",
+                        text = "Same-signature Routine handoff",
                         style = MaterialTheme.typography.bodyMedium,
                         color = SlateTextMuted
                     )
@@ -130,17 +129,10 @@ fun SettingsScreen(
                 color = SlateTextMuted
             )
             Text(
-                text = "Paired package: ${state.knownPairedPackageName ?: "not paired yet"}",
+                text = "Routine starts session-bound requests; Meditation verifies " +
+                    "the caller before creating or exposing session evidence.",
                 style = MaterialTheme.typography.bodySmall,
                 color = SlateTextMuted
-            )
-            Spacer(Modifier.height(8.dp))
-            ToggleRow(
-                icon = Icons.Outlined.Handshake,
-                title = "Paired integration",
-                subtitle = "Allow Rhythmic Routine to exchange session status.",
-                checked = state.pairedIntegrationEnabled,
-                onCheckedChange = viewModel::setPairedIntegrationEnabled
             )
         }
 
@@ -197,7 +189,7 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Version 0.1.0 · Pass 1 foundation",
+                        text = "Version 1.0.0 · Local-first companion",
                         style = MaterialTheme.typography.bodyMedium,
                         color = SlateTextMuted
                     )

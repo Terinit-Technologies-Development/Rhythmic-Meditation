@@ -20,7 +20,6 @@ import kotlinx.coroutines.flow.StateFlow
 import com.terinit.rhythmicmeditation.ui.screens.completion.CompletionScreen
 import com.terinit.rhythmicmeditation.ui.screens.evening.EveningScreen
 import com.terinit.rhythmicmeditation.ui.screens.insights.InsightsScreen
-import com.terinit.rhythmicmeditation.ui.screens.restorative.RestorativeChoiceScreen
 import com.terinit.rhythmicmeditation.ui.screens.session.ActiveSessionScreen
 import com.terinit.rhythmicmeditation.ui.screens.session.SessionsScreen
 import com.terinit.rhythmicmeditation.ui.screens.settings.SettingsScreen
@@ -40,7 +39,8 @@ import com.terinit.rhythmicmeditation.ui.screens.today.TodayScreen
 @Composable
 fun RhythmicMeditationRoot(
     pendingRoute: StateFlow<String?> = MutableStateFlow(null),
-    onRouteConsumed: () -> Unit = {}
+    onRouteConsumed: () -> Unit = {},
+    onOpenRoutine: () -> Unit = {}
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -85,9 +85,7 @@ fun RhythmicMeditationRoot(
                 composable(AppRoute.Today.route) {
                     TodayScreen(
                         onStartSession = { navController.navigate(AppRoute.ActiveSession.route) },
-                        onOpenRestorativeChoice = {
-                            navController.navigate(AppRoute.RestorativeChoice.route)
-                        },
+                        onOpenRoutine = onOpenRoutine,
                         onOpenEvening = { navController.navigate(AppRoute.Evening.route) },
                         onOpenInsights = { navController.navigate(AppRoute.Insights.route) }
                     )
@@ -125,14 +123,13 @@ fun RhythmicMeditationRoot(
                             navController.navigate(AppRoute.Insights.route) {
                                 popUpTo(AppRoute.Today.route)
                             }
-                        }
+                        },
+                        onOpenRoutine = onOpenRoutine
                     )
                 }
                 composable(AppRoute.Evening.route) {
                     EveningScreen(
-                        onStartNow = { navController.navigate(AppRoute.ActiveSession.route) },
-                        onSnooze = { navController.popBackStack() },
-                        onDefer = { navController.popBackStack() }
+                        onStartSession = { navController.navigate(AppRoute.ActiveSession.route) }
                     )
                 }
                 composable(AppRoute.Insights.route) {
@@ -140,14 +137,6 @@ fun RhythmicMeditationRoot(
                 }
                 composable(AppRoute.Settings.route) {
                     SettingsScreen()
-                }
-                composable(AppRoute.RestorativeChoice.route) {
-                    RestorativeChoiceScreen(
-                        onBeginMeditation = {
-                            navController.navigate(AppRoute.ActiveSession.route)
-                        },
-                        onOpenReader = { /* Handoff to Rhythmic Reader in a later pass */ }
-                    )
                 }
             }
         }
