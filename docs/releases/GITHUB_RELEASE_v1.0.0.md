@@ -5,6 +5,11 @@ publicly downloadable. No Play Store binary or submission is included.
 Meditation provides inward/restorative evidence; Routine remains the policy and
 native-enforcement authority.
 
+### APK
+
+- [Download Rhythmic-Meditation-v1.0.0.apk](https://github.com/Terinit-Technologies-Development/Rhythmic-Meditation/releases/download/v1.0.0/Rhythmic-Meditation-v1.0.0.apk)
+- SHA-256: `e55c6c073308cb113884a04d946f95d31e56e095e8ea674d2e4e07abe7f08e23`
+
 ### Highlights
 
 - Morning Meditation, Routine-bound Cooldown Restorative Meditation, Evening
