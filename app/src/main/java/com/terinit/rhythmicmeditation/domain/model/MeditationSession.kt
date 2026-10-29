@@ -11,6 +11,10 @@ package com.terinit.rhythmicmeditation.domain.model
  *
  * This model is pure Kotlin: it holds meditation evidence only. Policy
  * (cooldowns, requirements, enforcement) is owned by Rhythmic Routine.
+ *
+ * Binding identity: [kind], [sourceCooldownId], and [sourceRhythmicDayId] are
+ * persisted with the session and exposed as additive status metadata. They
+ * must never be rewritten under an existing sessionId.
  */
 data class MeditationSession(
     val sessionId: String,

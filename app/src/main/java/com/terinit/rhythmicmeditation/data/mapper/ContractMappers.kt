@@ -21,5 +21,8 @@ fun MeditationSession.toRecoveryStatus(): MeditationRecoveryStatus = MeditationR
     requiredQualifiedSeconds = requiredSeconds,
     completedQualifiedSeconds = completedQualifiedSeconds,
     completedAtEpochMs = completedAtEpochMs,
-    lastUpdatedAtEpochMs = lastUpdatedAtEpochMs()
+    lastUpdatedAtEpochMs = lastUpdatedAtEpochMs(),
+    sessionKind = kind.name,
+    sourceCooldownId = sourceCooldownId,
+    sourceRhythmicDayId = sourceRhythmicDayId
 )

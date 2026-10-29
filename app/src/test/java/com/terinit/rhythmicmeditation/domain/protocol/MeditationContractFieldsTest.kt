@@ -1,6 +1,8 @@
 package com.terinit.rhythmicmeditation.domain.protocol
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -110,5 +112,105 @@ class MeditationContractFieldsTest {
             mapOf(MeditationContractFields.KEY_SESSION_ID to "session-1")
         )
         assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun `legacy seven-field status map decodes without identity metadata`() {
+        val legacy: Map<String, Any?> = mapOf(
+            MeditationContractFields.KEY_SESSION_ID to "session-1",
+            MeditationContractFields.KEY_PROTOCOL_VERSION to 1,
+            MeditationContractFields.KEY_STATUS to "ACTIVE",
+            MeditationContractFields.KEY_REQUIRED_QUALIFIED_SECONDS to 1_800,
+            MeditationContractFields.KEY_COMPLETED_QUALIFIED_SECONDS to 768,
+            MeditationContractFields.KEY_COMPLETED_AT_EPOCH_MS to null,
+            MeditationContractFields.KEY_LAST_UPDATED_AT_EPOCH_MS to 1_700_000_000_000L
+        )
+
+        val status = MeditationContractFields.statusFromFields(legacy).getOrThrow()
+
+        assertNull(status.sessionKind)
+        assertNull(status.sourceCooldownId)
+        assertNull(status.sourceRhythmicDayId)
+        assertNull(
+            "missing metadata is an upgrade limitation, never a match",
+            status.identityOrNull()
+        )
+    }
+
+    @Test
+    fun `status identity fields round trip additively`() {
+        val status = MeditationRecoveryStatus(
+            sessionId = "session-1",
+            protocolVersion = 1,
+            status = "COMPLETED",
+            requiredQualifiedSeconds = 1_800,
+            completedQualifiedSeconds = 1_800,
+            completedAtEpochMs = 1_700_000_100_000L,
+            lastUpdatedAtEpochMs = 1_700_000_100_000L,
+            sessionKind = "COOLDOWN_RESTORATIVE",
+            sourceCooldownId = "cd-2",
+            sourceRhythmicDayId = "day-2"
+        )
+
+        val fields = MeditationContractFields.fieldsOf(status)
+        val decoded = MeditationContractFields.statusFromFields(fields).getOrThrow()
+
+        assertEquals(status, decoded)
+        assertEquals(
+            MeditationSessionIdentity(
+                sessionId = "session-1",
+                protocolVersion = 1,
+                sessionKind = "COOLDOWN_RESTORATIVE",
+                sourceCooldownId = "cd-2",
+                sourceRhythmicDayId = "day-2"
+            ),
+            decoded.identityOrNull()
+        )
+        // The frozen legacy keys are still present.
+        assertTrue(fields.containsKey(MeditationContractFields.KEY_SESSION_ID))
+        assertTrue(fields.containsKey(MeditationContractFields.KEY_PROTOCOL_VERSION))
+        assertTrue(fields.containsKey(MeditationContractFields.KEY_STATUS))
+        assertTrue(fields.containsKey(MeditationContractFields.KEY_REQUIRED_QUALIFIED_SECONDS))
+        assertTrue(fields.containsKey(MeditationContractFields.KEY_COMPLETED_QUALIFIED_SECONDS))
+        assertTrue(fields.containsKey(MeditationContractFields.KEY_COMPLETED_AT_EPOCH_MS))
+        assertTrue(fields.containsKey(MeditationContractFields.KEY_LAST_UPDATED_AT_EPOCH_MS))
+    }
+
+    @Test
+    fun `wrong-type identity metadata is not trusted as identity`() {
+        val fields: Map<String, Any?> = mapOf(
+            MeditationContractFields.KEY_SESSION_ID to "session-1",
+            MeditationContractFields.KEY_PROTOCOL_VERSION to 1,
+            MeditationContractFields.KEY_STATUS to "ACTIVE",
+            MeditationContractFields.KEY_REQUIRED_QUALIFIED_SECONDS to 1_800,
+            MeditationContractFields.KEY_COMPLETED_QUALIFIED_SECONDS to 768,
+            MeditationContractFields.KEY_LAST_UPDATED_AT_EPOCH_MS to 1_700_000_000_000L,
+            MeditationContractFields.KEY_SESSION_KIND to 42
+        )
+
+        val status = MeditationContractFields.statusFromFields(fields).getOrThrow()
+
+        assertNull(status.sessionKind)
+        assertNull(status.identityOrNull())
+    }
+
+    @Test
+    fun `pre-metadata status keeps the exact seven-key map`() {
+        val status = MeditationRecoveryStatus(
+            sessionId = "session-1",
+            protocolVersion = 1,
+            status = "ACTIVE",
+            requiredQualifiedSeconds = 1_800,
+            completedQualifiedSeconds = 768,
+            completedAtEpochMs = null,
+            lastUpdatedAtEpochMs = 1_700_000_000_000L
+        )
+
+        val fields = MeditationContractFields.fieldsOf(status)
+
+        assertEquals(7, fields.size)
+        assertFalse(fields.containsKey(MeditationContractFields.KEY_SESSION_KIND))
+        assertFalse(fields.containsKey(MeditationContractFields.KEY_SOURCE_COOLDOWN_ID))
+        assertFalse(fields.containsKey(MeditationContractFields.KEY_SOURCE_RHYTHMIC_DAY_ID))
     }
 }

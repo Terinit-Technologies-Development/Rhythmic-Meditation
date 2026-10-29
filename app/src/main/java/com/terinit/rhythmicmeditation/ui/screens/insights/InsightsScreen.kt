@@ -43,6 +43,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.terinit.rhythmicmeditation.domain.evening.EveningMeditationState
 import com.terinit.rhythmicmeditation.domain.session.MorningStatus
+import com.terinit.rhythmicmeditation.integration.contract.AttentionInsightUnavailableReason
 import com.terinit.rhythmicmeditation.ui.components.CalmCard
 import com.terinit.rhythmicmeditation.ui.components.IconBadge
 import com.terinit.rhythmicmeditation.ui.theme.MeditationGreen
@@ -277,6 +278,40 @@ fun InsightsScreen(
                         color = SlateTextMuted
                     )
                 }
+            } else {
+                CalmCard(
+                    modifier = Modifier.weight(1f),
+                    containerColor = Color.White.copy(alpha = 0.55f),
+                    contentPadding = 16.dp
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBadge(
+                            icon = Icons.Outlined.Spa,
+                            contentDescription = null,
+                            containerColor = Color.White.copy(alpha = 0.6f),
+                            diameter = 42.dp
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = "Rhythmic\nRoutine",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        text = state.routineStatusTitle(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = state.routineStatusAction(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SlateTextMuted
+                    )
+                }
             }
 
             CalmCard(
@@ -364,7 +399,7 @@ fun InsightsScreen(
                 text = if (state.routineConnected) {
                     "Meditation restorative choices · ${state.substitutionChoicesRemaining} of 2 remaining"
                 } else {
-                    "Rhythmic Routine not connected"
+                    state.routineStatusSummary()
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = SlateTextMuted
@@ -512,6 +547,80 @@ private fun LegendRow(color: Color, label: String, value: String, share: String)
             Text("$value · $share", style = MaterialTheme.typography.bodySmall, color = SlateTextMuted)
         }
     }
+}
+
+/**
+ * Honest, actionable Routine status copy. Never includes internal exception
+ * text, authority strings, or stack traces; never implies meditation is
+ * blocked. Local meditation evidence is always shown independently.
+ */
+private fun InsightsUiState.routineStatusTitle(): String = when (routineIssue) {
+    null -> if (routineConnected) {
+        "Rhythmic Routine connected"
+    } else {
+        "Checking Rhythmic Routine"
+    }
+    AttentionInsightUnavailableReason.PROVIDER_NOT_INSTALLED ->
+        "Rhythmic Routine not installed"
+    AttentionInsightUnavailableReason.SIGNATURE_OR_PERMISSION_DENIED ->
+        "Rhythmic Routine access denied"
+    AttentionInsightUnavailableReason.NULL_CURSOR ->
+        "Rhythmic Routine did not respond"
+    AttentionInsightUnavailableReason.EMPTY_CURRENT_DAY ->
+        "No insight for today yet"
+    AttentionInsightUnavailableReason.CURRENT_PROJECTION_UNAVAILABLE ->
+        "Current Routine insight unavailable"
+    AttentionInsightUnavailableReason.MALFORMED_ROW ->
+        "Rhythmic Routine sent unreadable data"
+    AttentionInsightUnavailableReason.PROTOCOL_VERSION_MISMATCH ->
+        "Rhythmic Routine needs an update"
+    AttentionInsightUnavailableReason.UNEXPECTED_ATTENTION_DAY ->
+        "Rhythmic Routine returned another day"
+    AttentionInsightUnavailableReason.TRANSPORT_ERROR ->
+        "Rhythmic Routine could not be reached"
+    AttentionInsightUnavailableReason.UNKNOWN ->
+        "Rhythmic Routine status unavailable"
+}
+
+private fun InsightsUiState.routineStatusAction(): String = when (routineIssue) {
+    null -> if (routineConnected) {
+        "Cooldown and gate context comes from Rhythmic Routine."
+    } else {
+        "Checking the read-only insight provider."
+    }
+    AttentionInsightUnavailableReason.PROVIDER_NOT_INSTALLED ->
+        "Install Rhythmic Routine from the same signed build to see cooldown and gate context."
+    AttentionInsightUnavailableReason.SIGNATURE_OR_PERMISSION_DENIED ->
+        "Rhythmic Routine is installed but did not authorize this app. Reinstall both apps from the same signed build."
+    AttentionInsightUnavailableReason.NULL_CURSOR ->
+        "Rhythmic Routine did not answer the insight query. Reopen Insights to retry; if it persists, reinstall both apps from the same signed build."
+    AttentionInsightUnavailableReason.EMPTY_CURRENT_DAY ->
+        "Rhythmic Routine is reachable but has no insight for today's Attention Day yet."
+    AttentionInsightUnavailableReason.CURRENT_PROJECTION_UNAVAILABLE ->
+        "Rhythmic Routine is reachable but does not support the current-day insight selector. Update Rhythmic Routine; no calendar day is guessed."
+    AttentionInsightUnavailableReason.MALFORMED_ROW ->
+        "Rhythmic Routine returned an unreadable insight. Update Rhythmic Routine or reopen Insights."
+    AttentionInsightUnavailableReason.PROTOCOL_VERSION_MISMATCH ->
+        "This build and Rhythmic Routine use different insight protocols. Update both apps."
+    AttentionInsightUnavailableReason.UNEXPECTED_ATTENTION_DAY ->
+        "Rhythmic Routine returned a different Attention Day. Reopen Insights; if it persists, update both apps."
+    AttentionInsightUnavailableReason.TRANSPORT_ERROR ->
+        "Rhythmic Routine could not be reached. Your meditation record is unaffected; reopen Insights to retry."
+    AttentionInsightUnavailableReason.UNKNOWN ->
+        "Insight status is unavailable. Local meditation data is unaffected."
+}
+
+private fun InsightsUiState.routineStatusSummary(): String = when {
+    routineConnected ->
+        "Meditation restorative choices · $substitutionChoicesRemaining of 2 remaining"
+    routineIssue == AttentionInsightUnavailableReason.EMPTY_CURRENT_DAY ->
+        "Rhythmic Routine connected · no insight for today yet"
+    routineIssue == AttentionInsightUnavailableReason.CURRENT_PROJECTION_UNAVAILABLE ->
+        "Rhythmic Routine current projection unavailable — update Rhythmic Routine"
+    routineIssue == null ->
+        "Checking Rhythmic Routine"
+    else ->
+        "Rhythmic Routine unavailable — ${routineStatusAction()}"
 }
 
 private fun MorningStatus.toMorningCopy(): String = when (this) {

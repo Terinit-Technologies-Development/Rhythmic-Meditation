@@ -7,6 +7,7 @@ import com.terinit.rhythmicmeditation.domain.model.MeditationSessionStatus
 import com.terinit.rhythmicmeditation.domain.session.MorningStatus
 import com.terinit.rhythmicmeditation.integration.contract.AttentionInsightProtocol
 import com.terinit.rhythmicmeditation.integration.contract.AttentionInsightProjection
+import com.terinit.rhythmicmeditation.integration.contract.AttentionInsightUnavailableReason
 import com.terinit.rhythmicmeditation.integration.contract.ReadingEvidence
 import java.time.LocalDate
 import java.time.ZoneId
@@ -80,7 +81,8 @@ class InsightsUiStateTest {
         sessions: List<MeditationSession> = emptyList(),
         routineToday: AttentionInsightProjection? = null,
         routineWeek: List<AttentionInsightProjection> = emptyList(),
-        readingToday: ReadingEvidence? = null
+        readingToday: ReadingEvidence? = null,
+        routineIssue: AttentionInsightUnavailableReason? = null
     ) = buildInsightsUiState(
         sessions = sessions,
         eveningRecord = null,
@@ -90,7 +92,8 @@ class InsightsUiStateTest {
         routineToday = routineToday,
         routineWeek = routineWeek,
         readingToday = readingToday,
-        zone = zone
+        zone = zone,
+        routineIssue = routineIssue
     )
 
     @Test
@@ -252,5 +255,120 @@ class InsightsUiStateTest {
         assertEquals(4, state.gatesSatisfiedWeek)
         assertTrue(state.readerConnected)
         assertEquals(90, state.readingMinutes)
+    }
+
+    @Test
+    fun `valid zero counts remain connected`() {
+        val state = build(
+            routineToday = routineProjection(
+                gatesCreated = 0,
+                gatesSatisfied = 0,
+                substitutionsUsed = 0
+            )
+        )
+
+        assertTrue(state.routineConnected)
+        assertTrue(state.routineReachable)
+        assertNull(state.routineIssue)
+        assertEquals(0, state.gatesCreatedToday)
+        assertEquals(0, state.gatesSatisfiedToday)
+        assertEquals(2, state.substitutionChoicesRemaining)
+    }
+
+    @Test
+    fun `empty current day is reachable but not connected`() {
+        val state = build(routineIssue = AttentionInsightUnavailableReason.EMPTY_CURRENT_DAY)
+
+        assertFalse(state.routineConnected)
+        assertTrue(state.routineReachable)
+        assertEquals(
+            AttentionInsightUnavailableReason.EMPTY_CURRENT_DAY,
+            state.routineIssue
+        )
+        assertEquals(0, state.gatesCreatedToday)
+        assertEquals(0, state.gatesSatisfiedToday)
+        assertEquals(0, state.substitutionChoicesRemaining)
+    }
+
+    @Test
+    fun `denied provider is not connected and invents nothing`() {
+        val state = build(
+            sessions = listOf(session("solo-1")),
+            routineIssue = AttentionInsightUnavailableReason.SIGNATURE_OR_PERMISSION_DENIED
+        )
+
+        assertFalse(state.routineConnected)
+        assertFalse(state.routineReachable)
+        assertEquals(
+            AttentionInsightUnavailableReason.SIGNATURE_OR_PERMISSION_DENIED,
+            state.routineIssue
+        )
+        assertEquals(0, state.gatesSatisfiedToday)
+        assertEquals(0, state.substitutionChoicesRemaining)
+        // Local meditation evidence is unaffected by the denied projection.
+        assertEquals(30, state.todayMeditationMinutes)
+    }
+
+    @Test
+    fun `unexpected attention day is not treated as connected`() {
+        val state = build(
+            routineIssue = AttentionInsightUnavailableReason.UNEXPECTED_ATTENTION_DAY
+        )
+
+        assertFalse(state.routineConnected)
+        assertTrue(state.routineReachable)
+        assertEquals(
+            AttentionInsightUnavailableReason.UNEXPECTED_ATTENTION_DAY,
+            state.routineIssue
+        )
+        assertEquals(0, state.gatesSatisfiedToday)
+    }
+
+    @Test
+    fun `an issue wins over an inconsistent projection so counts are never invented`() {
+        val state = build(
+            routineToday = routineProjection(gatesCreated = 3, gatesSatisfied = 2),
+            routineIssue = AttentionInsightUnavailableReason.MALFORMED_ROW
+        )
+
+        assertFalse(state.routineConnected)
+        assertEquals(0, state.gatesCreatedToday)
+        assertEquals(0, state.gatesSatisfiedToday)
+        assertEquals(0, state.gatesSatisfiedWeek)
+        assertEquals(0, state.substitutionChoicesRemaining)
+    }
+
+    @Test
+    fun `opaque current projection stays connected with zero counts`() {
+        val state = build(
+            routineToday = routineProjection(
+                attentionDayId = "routine-opaque-current-1",
+                gatesCreated = 0,
+                gatesSatisfied = 0,
+                substitutionsUsed = 0
+            )
+        )
+
+        assertTrue(state.routineConnected)
+        assertEquals(0, state.gatesCreatedToday)
+        assertEquals(0, state.gatesSatisfiedToday)
+        assertEquals(2, state.substitutionChoicesRemaining)
+    }
+
+    @Test
+    fun `old provider current limitation is reachable but not connected`() {
+        val state = build(
+            routineIssue = AttentionInsightUnavailableReason.CURRENT_PROJECTION_UNAVAILABLE
+        )
+
+        assertFalse(state.routineConnected)
+        assertTrue(state.routineReachable)
+        assertEquals(
+            AttentionInsightUnavailableReason.CURRENT_PROJECTION_UNAVAILABLE,
+            state.routineIssue
+        )
+        assertEquals(0, state.gatesCreatedToday)
+        assertEquals(0, state.gatesSatisfiedToday)
+        assertEquals(0, state.substitutionChoicesRemaining)
     }
 }

@@ -35,8 +35,21 @@ class FakeMeditationSessionRepository : MeditationSessionRepository {
     override fun observeSession(sessionId: String): Flow<MeditationSession?> =
         sessions.map { map -> map[sessionId] }
 
-    override suspend fun getSession(sessionId: String): MeditationSession? =
-        sessions.value[sessionId]
+    /**
+     * Deterministic interleaving hook for concurrency tests. Invoked after the
+     * read counter increments and before the stored map is read.
+     */
+    var beforeGetSession: (suspend (String) -> Unit)? = null
+
+    /** Number of getSession reads (for proving serialization). */
+    var getSessionCallCount: Int = 0
+        private set
+
+    override suspend fun getSession(sessionId: String): MeditationSession? {
+        getSessionCallCount++
+        beforeGetSession?.invoke(sessionId)
+        return sessions.value[sessionId]
+    }
 
     override suspend fun getSessionsWithIdPrefix(prefix: String): List<MeditationSession> =
         sessions.value.values
