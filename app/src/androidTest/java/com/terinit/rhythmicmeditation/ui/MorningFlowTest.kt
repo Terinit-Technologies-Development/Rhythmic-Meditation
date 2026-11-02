@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.terinit.rhythmicmeditation.app.MainActivity
@@ -90,6 +91,13 @@ class MorningFlowTest {
         composeRule.onNodeWithText("End Session").performClick()
         composeRule.onNodeWithText("End session").performClick()
 
+        // Confirmation launches the cancellation coroutine; the Room commit
+        // and CANCELLED-driven navigation land asynchronously. Wait for the
+        // actual Today requirement rather than asserting mid-transition.
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Morning Meditation Required")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText("Morning Meditation Required").assertIsDisplayed()
     }
 
@@ -114,6 +122,7 @@ class MorningFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText("Session complete").assertIsDisplayed()
-        composeRule.onNodeWithText("Return to Today").assertIsDisplayed()
+        // The action sits below the completion cards inside a vertical scroll.
+        composeRule.onNodeWithText("Return to Today").performScrollTo().assertIsDisplayed()
     }
 }
