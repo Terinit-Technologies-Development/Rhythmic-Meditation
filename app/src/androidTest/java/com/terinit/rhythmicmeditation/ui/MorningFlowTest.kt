@@ -63,6 +63,11 @@ class MorningFlowTest {
     @Test
     fun activeSessionPauseAndResume() {
         composeRule.onNodeWithText("Begin Session").performClick()
+        // The Active destination composes asynchronously after navigation.
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("MORNING SESSION")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText("Pause").assertIsDisplayed()
 
         composeRule.onNodeWithText("Pause").performClick()
@@ -75,6 +80,11 @@ class MorningFlowTest {
     @Test
     fun endEarlyShowsCalmConfirmation() {
         composeRule.onNodeWithText("Begin Session").performClick()
+        // The Active destination composes asynchronously after navigation.
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("MORNING SESSION")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
 
         composeRule.onNodeWithText("End Session").performClick()
 
