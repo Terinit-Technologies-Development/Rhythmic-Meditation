@@ -272,7 +272,7 @@ private fun MorningCard(
         Spacer(Modifier.height(16.dp))
         Text(
             text = when (status) {
-                MorningStatus.REQUIRED -> "Morning Meditation Required"
+                MorningStatus.REQUIRED -> "Morning Meditation Available"
                 MorningStatus.IN_PROGRESS -> "Morning Meditation in progress"
                 MorningStatus.PAUSED -> "Morning Meditation paused"
                 MorningStatus.COMPLETE -> "Morning Meditation Complete"
@@ -284,7 +284,7 @@ private fun MorningCard(
         Text(
             text = when (status) {
                 MorningStatus.REQUIRED ->
-                    "Your morning buffer has ended.\nBegin today in stillness to unlock your day."
+                    "A quiet moment is ready when you are.\nBegin today in stillness."
                 MorningStatus.IN_PROGRESS ->
                     "Your session is still running.\nCome back to it whenever you are ready."
                 MorningStatus.PAUSED ->
