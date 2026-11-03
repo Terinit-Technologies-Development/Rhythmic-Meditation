@@ -40,7 +40,7 @@ class MorningFlowTest {
     @Before
     fun resetSessions() {
         // Deterministic starting point: no live sessions -> Today shows
-        // "Morning Meditation Required".
+        // "Morning Meditation Available".
         runBlocking {
             app.container.sessionRepository.observeSessions().first()
                 .filter { it.isActiveLifecycle }
@@ -61,7 +61,7 @@ class MorningFlowTest {
 
     @Test
     fun todayBeginSessionOpensActiveSession() {
-        composeRule.onNodeWithText("Morning Meditation Required").assertIsDisplayed()
+        composeRule.onNodeWithText("Morning Meditation Available").assertIsDisplayed()
         composeRule.onNodeWithText("Begin Session").assertIsDisplayed()
 
         composeRule.onNodeWithText("Begin Session").performClick()
@@ -111,8 +111,8 @@ class MorningFlowTest {
 
         // Confirming launches the cancellation coroutine; the Room commit and
         // CANCELLED-driven navigation complete on later frames.
-        waitUntilDisplayed("Morning Meditation Required")
-        composeRule.onNodeWithText("Morning Meditation Required").assertIsDisplayed()
+        waitUntilDisplayed("Morning Meditation Available")
+        composeRule.onNodeWithText("Morning Meditation Available").assertIsDisplayed()
     }
 
     @Test
