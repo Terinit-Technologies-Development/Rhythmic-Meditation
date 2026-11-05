@@ -14,6 +14,21 @@ import com.terinit.rhythmicmeditation.domain.protocol.MeditationRecoveryRequestV
 import com.terinit.rhythmicmeditation.domain.timing.ElapsedTimeCalculator
 import com.terinit.rhythmicmeditation.domain.timing.TimeProvider
 import com.terinit.rhythmicmeditation.util.Ids
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+/**
+ * Typed conflict returned when a recovery request reuses an existing
+ * sessionId with a different binding. Callers surface this as a normal
+ * [Result] failure; it never crashes the app and never mutates stored
+ * evidence.
+ */
+class MeditationSessionConflictException(
+    val sessionId: String,
+    val reason: String
+) : IllegalStateException(
+    "Recovery request for '$sessionId' conflicts with the stored session: $reason"
+)
 
 /**
  * Session lifecycle service.
@@ -28,7 +43,8 @@ import com.terinit.rhythmicmeditation.util.Ids
  *   complete / cancel), so a crash mid-session can never lose more than the
  *   currently open interval, and never double-counts.
  * - Recovery requests are idempotent: re-issuing the same request does not
- *   reset recorded evidence.
+ *   reset recorded evidence. Reusing an id with a changed binding is rejected
+ *   instead of replacing metadata or clearing completion.
  * - Policy (cooldowns, requirements, enforcement) stays in Rhythmic Routine.
  */
 class MeditationSessionService(
@@ -39,14 +55,33 @@ class MeditationSessionService(
 ) {
 
     /**
-     * Creates a session from a Routine recovery request, or replaces the
-     * metadata of an existing session with the same id.
+     * Serializes recovery binding creation within this process. The service is
+     * a singleton in [com.terinit.rhythmicmeditation.data.AppContainer], so
+     * simultaneous IPC/request callers cannot both observe absence and race
+     * an upsert. Lifecycle evidence updates still use the repository's
+     * non-destructive upsert operation.
+     */
+    private val bindingMutex = Mutex()
+
+    /**
+     * Creates a session from a Routine recovery request, or returns the
+     * existing session for an exact replay.
      *
      * Semantics:
-     * - unknown id            -> new PENDING session
-     * - identical request     -> no-op (idempotent), returns existing session
-     * - changed request       -> metadata replaced; recorded evidence
-     *   (qualified seconds, counts) and a live ACTIVE/PAUSED status survive
+     * - unknown id        -> new PENDING session
+     * - identical request -> no-op (idempotent), returns existing session
+     * - changed request   -> rejected as [MeditationSessionConflictException];
+     *   stored evidence, status, completion time, and the original binding are
+     *   never rewritten
+     *
+     * Identity is the stored request tuple: protocol version, session kind,
+     * required qualified seconds, creation time, nullable expiry, source
+     * cooldown, and source Rhythmic Day. `sourceRiskGroupId` is request-only in
+     * the current ledger (it is not persisted), so it cannot be part of stored
+     * identity; adding it would require an additive database migration.
+     *
+     * The legacy method name is retained for call-site compatibility; it no
+     * longer silently replaces a conflicting binding.
      */
     suspend fun createOrReplaceSession(request: MeditationRecoveryRequest): Result<MeditationSession> {
         MeditationRecoveryRequestValidator.validate(request)
@@ -57,60 +92,70 @@ class MeditationSessionService(
                 IllegalArgumentException("sessionKind '${request.sessionKind}' is not recognized")
             )
 
-        val existing = sessionRepository.getSession(request.sessionId)
-        return if (existing == null) {
-            val session = MeditationSession(
-                sessionId = request.sessionId,
-                protocolVersion = request.protocolVersion,
-                kind = kind,
-                status = MeditationSessionStatus.PENDING,
-                requiredSeconds = request.requiredQualifiedSeconds,
-                completedQualifiedSeconds = 0,
-                startedAtEpochMs = null,
-                completedAtEpochMs = null,
-                createdAtEpochMs = request.createdAtEpochMs,
-                expiresAtEpochMs = request.expiresAtEpochMs,
-                sourceCooldownId = request.sourceCooldownId,
-                sourceRhythmicDayId = request.sourceRhythmicDayId,
-                interruptionCount = 0,
-                pauseCount = 0
-            )
-            sessionRepository.upsertSession(session)
-            Result.success(session)
-        } else {
-            val isIdentical =
-                existing.createdAtEpochMs == request.createdAtEpochMs &&
-                    existing.requiredSeconds == request.requiredQualifiedSeconds &&
-                    existing.protocolVersion == request.protocolVersion &&
-                    existing.kind == kind &&
-                    existing.expiresAtEpochMs == request.expiresAtEpochMs
+        return bindingMutex.withLock<Result<MeditationSession>> {
+            val existing = sessionRepository.getSession(request.sessionId)
+                ?: return@withLock Result.success(createNewSession(request, kind))
 
-            if (isIdentical) {
+            val conflict = conflictReason(existing, request, kind)
+            if (conflict == null) {
                 Result.success(existing)
             } else {
-                val liveStatus =
-                    if (existing.status == MeditationSessionStatus.ACTIVE ||
-                        existing.status == MeditationSessionStatus.PAUSED
-                    ) {
-                        existing.status
-                    } else {
-                        MeditationSessionStatus.PENDING
-                    }
-                val replaced = existing.copy(
-                    protocolVersion = request.protocolVersion,
-                    kind = kind,
-                    status = liveStatus,
-                    requiredSeconds = request.requiredQualifiedSeconds,
-                    createdAtEpochMs = request.createdAtEpochMs,
-                    expiresAtEpochMs = request.expiresAtEpochMs,
-                    sourceCooldownId = request.sourceCooldownId,
-                    sourceRhythmicDayId = request.sourceRhythmicDayId,
-                    completedAtEpochMs = null
+                Result.failure(
+                    MeditationSessionConflictException(
+                        sessionId = request.sessionId,
+                        reason = conflict
+                    )
                 )
-                sessionRepository.upsertSession(replaced)
-                Result.success(replaced)
             }
         }
+    }
+
+    private suspend fun createNewSession(
+        request: MeditationRecoveryRequest,
+        kind: MeditationSessionKind
+    ): MeditationSession {
+        val session = MeditationSession(
+            sessionId = request.sessionId,
+            protocolVersion = request.protocolVersion,
+            kind = kind,
+            status = MeditationSessionStatus.PENDING,
+            requiredSeconds = request.requiredQualifiedSeconds,
+            completedQualifiedSeconds = 0,
+            startedAtEpochMs = null,
+            completedAtEpochMs = null,
+            createdAtEpochMs = request.createdAtEpochMs,
+            expiresAtEpochMs = request.expiresAtEpochMs,
+            sourceCooldownId = request.sourceCooldownId,
+            sourceRhythmicDayId = request.sourceRhythmicDayId,
+            interruptionCount = 0,
+            pauseCount = 0
+        )
+        sessionRepository.upsertSession(session)
+        return session
+    }
+
+    private fun conflictReason(
+        existing: MeditationSession,
+        request: MeditationRecoveryRequest,
+        kind: MeditationSessionKind
+    ): String? = when {
+        existing.protocolVersion != request.protocolVersion ->
+            "protocolVersion changed"
+        existing.kind != kind ->
+            "sessionKind changed"
+        existing.requiredSeconds != request.requiredQualifiedSeconds ->
+            "requiredQualifiedSeconds changed"
+        existing.createdAtEpochMs != request.createdAtEpochMs ->
+            "createdAtEpochMs changed"
+        existing.expiresAtEpochMs != request.expiresAtEpochMs ->
+            "expiresAtEpochMs changed"
+        existing.sourceCooldownId != request.sourceCooldownId ->
+            "sourceCooldownId changed"
+        existing.sourceRhythmicDayId != request.sourceRhythmicDayId ->
+            "sourceRhythmicDayId changed"
+        // sourceRiskGroupId is request-only today and is not stored by the
+        // session ledger, so it cannot participate in stored identity.
+        else -> null
     }
 
     /** Creates a locally-owned session (standalone practice, evening, previews). */

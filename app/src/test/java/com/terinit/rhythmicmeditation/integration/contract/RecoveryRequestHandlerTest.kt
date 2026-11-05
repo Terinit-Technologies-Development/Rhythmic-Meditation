@@ -2,6 +2,7 @@ package com.terinit.rhythmicmeditation.integration.contract
 
 import com.terinit.rhythmicmeditation.domain.model.MeditationSessionStatus
 import com.terinit.rhythmicmeditation.domain.protocol.MeditationRecoveryRequest
+import com.terinit.rhythmicmeditation.domain.session.MeditationSessionConflictException
 import com.terinit.rhythmicmeditation.domain.session.MeditationSessionService
 import com.terinit.rhythmicmeditation.testutil.FakeCallerTrustPolicy
 import com.terinit.rhythmicmeditation.testutil.FakeMeditationIntervalRepository
@@ -165,5 +166,23 @@ class RecoveryRequestHandlerTest {
         val sessionB = sessionRepository.getSession("routine-b")!!
         assertEquals(0, sessionB.completedQualifiedSeconds)
         assertFalse(sessionB.isRequirementMet)
+    }
+
+    @Test
+    fun `conflicting replay is a typed failure and cannot clear completion`() = runTest {
+        val handler = handler(trusted = true)
+        handler.handle(request(requiredSeconds = 1_800), trustedCaller).getOrThrow()
+        sessionService.startSession("routine-session-1").getOrThrow()
+        timeProvider.advanceSeconds(1_800)
+        sessionService.completeAtQualificationTarget("routine-session-1").getOrThrow()
+
+        val result = handler.handle(request(requiredSeconds = 3_600), trustedCaller)
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is MeditationSessionConflictException)
+        val stored = sessionRepository.getSession("routine-session-1")!!
+        assertEquals(MeditationSessionStatus.COMPLETED, stored.status)
+        assertEquals(1_800, stored.requiredSeconds)
+        assertEquals(1_800, stored.completedQualifiedSeconds)
     }
 }

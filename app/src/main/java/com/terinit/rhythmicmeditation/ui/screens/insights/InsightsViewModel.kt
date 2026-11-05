@@ -15,7 +15,10 @@ import com.terinit.rhythmicmeditation.domain.session.MorningStatus
 import com.terinit.rhythmicmeditation.domain.timing.TimeProvider
 import com.terinit.rhythmicmeditation.integration.contract.AttentionInsightClient
 import com.terinit.rhythmicmeditation.integration.contract.AttentionInsightProjection
+import com.terinit.rhythmicmeditation.integration.contract.AttentionInsightQueryResult
+import com.terinit.rhythmicmeditation.integration.contract.AttentionInsightUnavailableReason
 import com.terinit.rhythmicmeditation.integration.contract.ReadingEvidence
+import com.terinit.rhythmicmeditation.integration.contract.isProviderReachable
 import com.terinit.rhythmicmeditation.integration.contract.ReadingInsightClient
 import com.terinit.rhythmicmeditation.runtime.EveningMeditationController
 import java.time.ZoneId
@@ -57,7 +60,10 @@ data class InsightsUiState(
     val readingVerifiedSecondsToday: Int = 0,
     val readingQualifiedPagesToday: Int = 0,
     // Behavioral observation (shown only at >= 3 / >= 3 samples)
-    val observation: String? = null
+    val observation: String? = null,
+    // Additive Routine diagnostics (kept last for positional compatibility).
+    val routineReachable: Boolean = false,
+    val routineIssue: AttentionInsightUnavailableReason? = null
 ) {
     val readingMinutes: Int get() = readingVerifiedSecondsToday / 60
 
@@ -72,7 +78,8 @@ data class InsightsUiState(
 data class InsightProjections(
     val routineToday: AttentionInsightProjection?,
     val routineWeek: List<AttentionInsightProjection>,
-    val readingToday: ReadingEvidence?
+    val readingToday: ReadingEvidence?,
+    val routineIssue: AttentionInsightUnavailableReason? = null
 )
 
 /**
@@ -90,9 +97,11 @@ fun buildInsightsUiState(
     routineToday: AttentionInsightProjection?,
     routineWeek: List<AttentionInsightProjection>,
     readingToday: ReadingEvidence?,
-    zone: ZoneId = ZoneId.systemDefault()
+    zone: ZoneId = ZoneId.systemDefault(),
+    routineIssue: AttentionInsightUnavailableReason? = null
 ): InsightsUiState {
     val sample = MeditationInsights.morningComparisonSample(sessions, weekDateKeys, zone)
+    val connected = routineToday != null && routineIssue == null
     return InsightsUiState(
         todayDateKey = todayDateKey,
         todayMeditationMinutes = MeditationInsights.meditationMinutesForDate(sessions, todayDateKey, zone),
@@ -102,13 +111,31 @@ fun buildInsightsUiState(
         weekDateKeys = weekDateKeys,
         daysWithCompletedMeditation = MeditationInsights.daysWithCompletedMeditation(sessions, weekDateKeys, zone),
         weeklyCompletedSessionCount = MeditationInsights.weeklyCompletedSessionCount(sessions, weekDateKeys, zone),
-        routineConnected = routineToday != null,
-        gatesCreatedToday = routineToday?.restorativeGatesCreated ?: 0,
-        gatesSatisfiedToday = routineToday?.restorativeGatesSatisfied ?: 0,
-        gatesSatisfiedWeek = routineWeek.sumOf { it.restorativeGatesSatisfied },
-        substitutionChoicesRemaining = routineToday
-            ?.let { MeditationInsights.substitutionChoicesRemaining(it.meditationSubstitutionsUsed) }
-            ?: 0,
+        routineConnected = connected,
+        routineReachable = connected || routineIssue?.isProviderReachable == true,
+        routineIssue = if (connected) null else routineIssue,
+        gatesCreatedToday = if (connected) {
+            routineToday?.restorativeGatesCreated ?: 0
+        } else {
+            0
+        },
+        gatesSatisfiedToday = if (connected) {
+            routineToday?.restorativeGatesSatisfied ?: 0
+        } else {
+            0
+        },
+        gatesSatisfiedWeek = if (connected) {
+            routineWeek.sumOf { it.restorativeGatesSatisfied }
+        } else {
+            0
+        },
+        substitutionChoicesRemaining = if (connected) {
+            routineToday
+                ?.let { MeditationInsights.substitutionChoicesRemaining(it.meditationSubstitutionsUsed) }
+                ?: 0
+        } else {
+            0
+        },
         readerConnected = readingToday != null,
         readingVerifiedSecondsToday = readingToday?.verifiedActiveSeconds ?: 0,
         readingQualifiedPagesToday = readingToday?.qualifiedPages ?: 0,
@@ -155,7 +182,8 @@ class InsightsViewModel(
             nowEpochMs = now,
             routineToday = loaded?.routineToday,
             routineWeek = loaded?.routineWeek.orEmpty(),
-            readingToday = loaded?.readingToday
+            readingToday = loaded?.readingToday,
+            routineIssue = loaded?.routineIssue
         )
     }.stateIn(
         scope = viewModelScope,
@@ -169,25 +197,48 @@ class InsightsViewModel(
         refreshJob = viewModelScope.launch {
             projections.value = withContext(Dispatchers.IO) {
                 runCatching { loadProjections() }
-                    .getOrElse { InsightProjections(null, emptyList(), null) }
+                    .getOrElse {
+                        InsightProjections(
+                            routineToday = null,
+                            routineWeek = emptyList(),
+                            readingToday = null,
+                            routineIssue = AttentionInsightUnavailableReason.UNKNOWN
+                        )
+                    }
             }
         }
     }
 
-    /** Missing apps, denied providers, and malformed rows resolve to partial data. */
+    /**
+     * Missing apps, denied providers, and malformed rows resolve to partial
+     * data. Today's projection comes from Routine's additive
+     * `attention-day/current` selector, never from a locally guessed calendar
+     * date or an evening signal. The typed result is retained so the UI can
+     * distinguish "not installed" from "connected but empty" and from an
+     * old provider that lacks the current selector.
+     */
     private fun loadProjections(): InsightProjections {
         val now = timeProvider.currentTimeMillis()
         val todayDateKey = MeditationInsights.dateKeyOf(now)
-        val todayAttentionDayId = eveningController.currentAttentionDayId()
-        val queryDays = (MeditationInsights.weekDateKeys(todayDateKey) + todayAttentionDayId)
-            .distinct()
-        val routineByDay = queryDays
-            .mapNotNull { day -> attentionInsightClient.attentionDay(day) }
+        val weekResults = MeditationInsights.weekDateKeys(todayDateKey).associateWith { day ->
+            attentionInsightClient.attentionDayResult(day)
+        }
+        val currentResult = attentionInsightClient.currentAttentionDayResult()
+        val connectedByDay = (weekResults.values + currentResult)
+            .filterIsInstance<AttentionInsightQueryResult.Connected>()
+            .map { it.projection }
             .associateBy { it.attentionDayId }
+        val currentProjection = (currentResult as? AttentionInsightQueryResult.Connected)
+            ?.projection
+        val currentIssue = when (currentResult) {
+            is AttentionInsightQueryResult.Unavailable -> currentResult.reason
+            is AttentionInsightQueryResult.Connected -> null
+        }
         return InsightProjections(
-            routineToday = routineByDay[todayAttentionDayId],
-            routineWeek = routineByDay.values.toList(),
-            readingToday = readingInsightClient.dailyEvidence(todayDateKey)
+            routineToday = currentProjection,
+            routineWeek = connectedByDay.values.toList(),
+            readingToday = readingInsightClient.dailyEvidence(todayDateKey),
+            routineIssue = currentIssue
         )
     }
 

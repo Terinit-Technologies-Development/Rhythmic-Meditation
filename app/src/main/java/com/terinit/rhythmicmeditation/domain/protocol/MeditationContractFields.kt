@@ -20,7 +20,10 @@ object MeditationContractFields {
     const val KEY_SOURCE_RISK_GROUP_ID = "source_risk_group_id"
     const val KEY_SOURCE_RHYTHMIC_DAY_ID = "source_rhythmic_day_id"
 
-    // Status keys
+    // Status keys. Identity metadata reuses the request key names: they are
+    // additive optional fields, so maps from pre-metadata providers (which
+    // omit them entirely) still decode as a capability limitation, not a
+    // match.
     const val KEY_STATUS = "status"
     const val KEY_COMPLETED_QUALIFIED_SECONDS = "completed_qualified_seconds"
     const val KEY_COMPLETED_AT_EPOCH_MS = "completed_at_epoch_ms"
@@ -56,7 +59,15 @@ object MeditationContractFields {
         return MeditationRecoveryRequestValidator.validated(request)
     }
 
-    /** Builds a status from an untyped field map. */
+    /**
+     * Builds a status from an untyped field map.
+     *
+     * The identity fields are optional so payloads from pre-metadata
+     * providers still decode (with null identity = capability limitation).
+     * A present-but-wrong-type identity value is treated as absent rather
+     * than trusted; consumers must still reject the resulting incomplete
+     * identity.
+     */
     fun statusFromFields(fields: Map<String, Any?>): Result<MeditationRecoveryStatus> {
         val sessionId = fields.stringOf(KEY_SESSION_ID)
             ?: return Result.failure(malformed("$KEY_SESSION_ID is missing or not a String"))
@@ -79,7 +90,10 @@ object MeditationContractFields {
                 requiredQualifiedSeconds = requiredSeconds,
                 completedQualifiedSeconds = completedSeconds,
                 completedAtEpochMs = fields.longOf(KEY_COMPLETED_AT_EPOCH_MS),
-                lastUpdatedAtEpochMs = lastUpdated
+                lastUpdatedAtEpochMs = lastUpdated,
+                sessionKind = fields.stringOf(KEY_SESSION_KIND),
+                sourceCooldownId = fields.stringOf(KEY_SOURCE_COOLDOWN_ID),
+                sourceRhythmicDayId = fields.stringOf(KEY_SOURCE_RHYTHMIC_DAY_ID)
             )
         )
     }
@@ -97,16 +111,34 @@ object MeditationContractFields {
         KEY_SOURCE_RHYTHMIC_DAY_ID to request.sourceRhythmicDayId
     )
 
-    /** Flattens a status into a field map ready for Bundle encoding. */
-    fun fieldsOf(status: MeditationRecoveryStatus): Map<String, Any?> = mapOf(
-        KEY_SESSION_ID to status.sessionId,
-        KEY_PROTOCOL_VERSION to status.protocolVersion,
-        KEY_STATUS to status.status,
-        KEY_REQUIRED_QUALIFIED_SECONDS to status.requiredQualifiedSeconds,
-        KEY_COMPLETED_QUALIFIED_SECONDS to status.completedQualifiedSeconds,
-        KEY_COMPLETED_AT_EPOCH_MS to status.completedAtEpochMs,
-        KEY_LAST_UPDATED_AT_EPOCH_MS to status.lastUpdatedAtEpochMs
-    )
+    /**
+     * Flattens a status into a field map ready for Bundle encoding.
+     *
+     * A pre-metadata status (all identity fields null) keeps the exact frozen
+     * seven-key shape. Identity keys are added only when the status actually
+     * carries at least one identity value; older readers ignore the additive
+     * keys, and new readers treat an absent key as a capability limitation.
+     */
+    fun fieldsOf(status: MeditationRecoveryStatus): Map<String, Any?> {
+        val legacy = mapOf(
+            KEY_SESSION_ID to status.sessionId,
+            KEY_PROTOCOL_VERSION to status.protocolVersion,
+            KEY_STATUS to status.status,
+            KEY_REQUIRED_QUALIFIED_SECONDS to status.requiredQualifiedSeconds,
+            KEY_COMPLETED_QUALIFIED_SECONDS to status.completedQualifiedSeconds,
+            KEY_COMPLETED_AT_EPOCH_MS to status.completedAtEpochMs,
+            KEY_LAST_UPDATED_AT_EPOCH_MS to status.lastUpdatedAtEpochMs
+        )
+        val hasIdentity = status.sessionKind != null ||
+            status.sourceCooldownId != null ||
+            status.sourceRhythmicDayId != null
+        if (!hasIdentity) return legacy
+        return legacy + mapOf(
+            KEY_SESSION_KIND to status.sessionKind,
+            KEY_SOURCE_COOLDOWN_ID to status.sourceCooldownId,
+            KEY_SOURCE_RHYTHMIC_DAY_ID to status.sourceRhythmicDayId
+        )
+    }
 
     private fun malformed(reason: String) =
         IllegalArgumentException("Malformed payload: $reason")

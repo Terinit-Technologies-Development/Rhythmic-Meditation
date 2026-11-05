@@ -1,10 +1,11 @@
 package com.terinit.rhythmicmeditation.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.terinit.rhythmicmeditation.app.MainActivity
@@ -39,7 +40,7 @@ class MorningFlowTest {
     @Before
     fun resetSessions() {
         // Deterministic starting point: no live sessions -> Today shows
-        // "Morning Meditation Required".
+        // "Morning Meditation Available".
         runBlocking {
             app.container.sessionRepository.observeSessions().first()
                 .filter { it.isActiveLifecycle }
@@ -47,12 +48,24 @@ class MorningFlowTest {
         }
     }
 
+    /**
+     * Bounded wait for a real control/state to be composed, placed and visible.
+     * Navigation, pause/resume and Room-backed cancellation settle on frames
+     * after the initiating click, so existence alone is not sufficient.
+     */
+    private fun waitUntilDisplayed(text: String, timeoutMillis: Long = 10_000) {
+        composeRule.waitUntil(timeoutMillis = timeoutMillis) {
+            composeRule.onNodeWithText(text).isDisplayed()
+        }
+    }
+
     @Test
     fun todayBeginSessionOpensActiveSession() {
-        composeRule.onNodeWithText("Morning Meditation Required").assertIsDisplayed()
+        composeRule.onNodeWithText("Morning Meditation Available").assertIsDisplayed()
         composeRule.onNodeWithText("Begin Session").assertIsDisplayed()
 
         composeRule.onNodeWithText("Begin Session").performClick()
+        waitUntilDisplayed("MORNING SESSION")
 
         composeRule.onNodeWithText("MORNING SESSION").assertIsDisplayed()
         composeRule.onNodeWithText("Pause").assertIsDisplayed()
@@ -62,35 +75,44 @@ class MorningFlowTest {
     @Test
     fun activeSessionPauseAndResume() {
         composeRule.onNodeWithText("Begin Session").performClick()
+        waitUntilDisplayed("Pause")
         composeRule.onNodeWithText("Pause").assertIsDisplayed()
 
         composeRule.onNodeWithText("Pause").performClick()
+        waitUntilDisplayed("Resume")
         composeRule.onNodeWithText("Resume").assertIsDisplayed()
 
         composeRule.onNodeWithText("Resume").performClick()
+        waitUntilDisplayed("Pause")
         composeRule.onNodeWithText("Pause").assertIsDisplayed()
     }
 
     @Test
     fun endEarlyShowsCalmConfirmation() {
         composeRule.onNodeWithText("Begin Session").performClick()
-
+        waitUntilDisplayed("End Session")
         composeRule.onNodeWithText("End Session").performClick()
 
         // Calm confirmation — no shaming, no rewards language.
+        waitUntilDisplayed("End this session?")
         composeRule.onNodeWithText("End this session?").assertIsDisplayed()
         composeRule.onNodeWithText("Your current meditation requirement will remain incomplete.")
             .assertIsDisplayed()
 
         // "Keep meditating" dismisses without ending.
         composeRule.onNodeWithText("Keep meditating").performClick()
+        waitUntilDisplayed("Pause")
         composeRule.onNodeWithText("Pause").assertIsDisplayed()
 
         // Confirming ends the session and returns to Today.
         composeRule.onNodeWithText("End Session").performClick()
+        waitUntilDisplayed("End session")
         composeRule.onNodeWithText("End session").performClick()
 
-        composeRule.onNodeWithText("Morning Meditation Required").assertIsDisplayed()
+        // Confirming launches the cancellation coroutine; the Room commit and
+        // CANCELLED-driven navigation complete on later frames.
+        waitUntilDisplayed("Morning Meditation Available")
+        composeRule.onNodeWithText("Morning Meditation Available").assertIsDisplayed()
     }
 
     @Test
@@ -106,14 +128,15 @@ class MorningFlowTest {
         }
 
         composeRule.onNodeWithText("Sessions").performClick()
+        waitUntilDisplayed("Open session")
         composeRule.onNodeWithText("Open session").performClick()
+        waitUntilDisplayed("OPEN SESSION")
         composeRule.onNodeWithText("OPEN SESSION").assertIsDisplayed()
 
-        composeRule.waitUntil(timeoutMillis = 30_000) {
-            composeRule.onAllNodesWithText("Session complete")
-                .fetchSemanticsNodes().isNotEmpty()
-        }
+        // Real 10s session; keep the 30s completion deadline.
+        waitUntilDisplayed("Session complete", timeoutMillis = 30_000)
         composeRule.onNodeWithText("Session complete").assertIsDisplayed()
-        composeRule.onNodeWithText("Return to Today").assertIsDisplayed()
+        // The action sits below the completion cards inside a vertical scroll.
+        composeRule.onNodeWithText("Return to Today").performScrollTo().assertIsDisplayed()
     }
 }

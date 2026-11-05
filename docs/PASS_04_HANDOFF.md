@@ -380,3 +380,13 @@ deny-by-default confirmed on hardware.
 - This closes the fresh Routine-bound CD4 Meditation acceptance only. Reader
   acceptance and the remaining Routine matrix rows remain open; no merge,
   release, store submission, or production promotion is authorized.
+
+## 13. SW-2026-005 T25 — Today morning availability copy — 2026-11-04
+
+- Standalone `MorningStatus.REQUIRED` no longer claims that Rhythmic Routine has
+  restricted the device or that a local "morning buffer" ended. The card now
+  reads "Morning Meditation Available" and invites practice, without claiming a
+  Routine restriction, an unlock, or a buffer transition.
+- Session behavior, the Routine attention-day/provider protocol, and
+  enforcement ownership are unchanged.
+- Android `versionCode` bumped `4` → `5` for the in-place upgrade.
